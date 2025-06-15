@@ -67,17 +67,37 @@ make run
 
 ## 🎯 Szybki start
 
+### 🚀 Metoda 1: Kompletny system (Zalecana)
+
+```bash
+# Uruchom cały system z dashboardem
+python start_jarvis.py
+```
+
+Ta komenda:
+- ✅ Sprawdza połączenie z LM Studio
+- 📁 Tworzy wymagane foldery
+- 🔍 Uruchamia monitorowanie folderów
+- 🌐 Otwiera dashboard w przeglądarce
+- 🤖 Automatycznie przetwarza nowe pliki
+
 ### CLI Interface
 
 ```bash
 # Pomoc
 jarvis-edu --help
 
+# Uruchom monitorowanie z dashboardem
+jarvis-edu watch
+
+# Klasyczny tryb automatyczny
+jarvis-edu auto
+
+# Inicjalizacja konfiguracji
+jarvis-edu init
+
 # Ekstrakcja z pojedynczego pliku
 jarvis-edu extract video.mp4 -o ./output/
-
-# Batch processing
-jarvis-edu batch ./materials/ -o ./lessons/
 
 # Uruchomienie web UI
 jarvis-edu serve
@@ -103,13 +123,22 @@ print(f"Tematy: {len(lesson.topics)}")
 print(f"Fragmenty kodu: {len(lesson.code_snippets)}")
 ```
 
+### 🧠 LM Studio Integration
+
+System integruje się z LM Studio dla lokalnego przetwarzania AI:
+
+1. **Pobierz LM Studio**: https://lmstudio.ai/
+2. **Załaduj model**: Zalecany `mistral-7b-instruct`
+3. **Uruchom serwer**: Port 1234 (domyślny)
+4. **Start systemu**: `python start_jarvis.py`
+
 ### Web Interface
 
 Po uruchomieniu serwera:
-- **Web UI**: http://localhost:8000
+- **Dashboard**: http://localhost:8000
 - **API Docs**: http://localhost:8000/docs
-- **Monitoring**: http://localhost:5555
-- **Qdrant**: http://localhost:6333
+- **Real-time Processing**: WebSocket updates
+- **Knowledge Base**: Searchable lessons database
 
 ## 📁 Struktura projektu
 
