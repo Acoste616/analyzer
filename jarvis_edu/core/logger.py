@@ -32,18 +32,19 @@ def setup_logging(config: Optional[LogConfig] = None) -> None:
     
     # Custom format for structured logging
     if config.format == "json":
+        # Use proper JSON formatter function to handle quotes and newlines
         def json_formatter(record):
-            return json.dumps({
-                "timestamp": record["time"].isoformat(),
+            log_record = {
+                "timestamp": record["time"].strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                 "level": record["level"].name,
                 "message": record["message"],
                 "module": record["module"],
                 "function": record["function"],
                 "line": record["line"],
                 "process": record["process"].id if record["process"] else None,
-                "thread": record["thread"].id if record["thread"] else None,
-                "extra": record["extra"]
-            }) + "\n"
+                "thread": record["thread"].id if record["thread"] else None
+            }
+            return json.dumps(log_record, ensure_ascii=False) + "\n"
         
         # Console handler with JSON format
         logger.add(
@@ -167,8 +168,8 @@ class ProcessingLogger:
         )
 
 
-# Setup default logging
-setup_logging(LogConfig())
+# Setup default logging with human-readable format
+setup_logging(LogConfig(format="human"))
 
 # Export main logger
 __all__ = ["logger", "setup_logging", "get_logger", "ProcessingLogger", "LogConfig"] 

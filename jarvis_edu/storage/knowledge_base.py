@@ -39,7 +39,7 @@ class Lesson(Base):
     topics_count = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, onupdate=datetime.utcnow)
-    metadata = Column(JSON)
+    lesson_metadata = Column(JSON, default=dict, nullable=False)
     
     # Relationships
     tags = relationship("Tag", secondary=lesson_tags, back_populates="lessons")
@@ -110,7 +110,7 @@ class KnowledgeBase:
                 difficulty=difficulty,
                 duration=duration,
                 topics_count=topics_count,
-                metadata=metadata or {}
+                lesson_metadata=metadata or {}
             )
             
             # Add tags
@@ -227,5 +227,5 @@ class KnowledgeBase:
             "categories": [cat.name for cat in lesson.categories],
             "created_at": lesson.created_at.isoformat(),
             "updated_at": lesson.updated_at.isoformat() if lesson.updated_at else None,
-            "metadata": lesson.metadata
+            "metadata": lesson.lesson_metadata
         } 

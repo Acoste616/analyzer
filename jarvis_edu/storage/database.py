@@ -53,7 +53,7 @@ class FileEntry(Base):
     file_hash = Column(String, unique=True, nullable=False)
     content_type = Column(String, nullable=False)
     status = Column(SQLEnum(FileStatus), default=FileStatus.PENDING)
-    metadata = Column(JSON, default=dict)
+    file_metadata = Column(JSON, default=dict, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, onupdate=datetime.utcnow)
     error_message = Column(String)
@@ -100,7 +100,7 @@ class ProcessingQueue:
                 filepath=filepath,
                 file_hash=file_hash,
                 content_type=content_type.value,
-                metadata=metadata or {},
+                file_metadata=metadata or {},
                 status=FileStatus.PENDING
             )
             
@@ -158,7 +158,10 @@ class ProcessingQueue:
                 entry.retry_count += 1
             
             if metadata_update:
-                entry.metadata.update(metadata_update)
+                # Guard against NULL JSON columns
+                if entry.file_metadata is None:
+                    entry.file_metadata = {}
+                entry.file_metadata.update(metadata_update)
             
             session.commit()
             
@@ -272,7 +275,7 @@ class ProcessingQueue:
             file_hash=entry.file_hash,
             content_type=ContentType(entry.content_type),
             status=entry.status,
-            metadata=entry.metadata,
+            metadata=entry.file_metadata,
             created_at=entry.created_at,
             updated_at=entry.updated_at,
             error_message=entry.error_message,
