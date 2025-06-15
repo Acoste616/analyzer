@@ -117,6 +117,10 @@ dependencies = [
     # File Monitoring
     "watchdog>=3.0.0",
     "pyyaml>=6.0.1",
+    
+    # HTTP Client & Server
+    "aiohttp>=3.9.0",
+    "requests>=2.31.0",
 ]
 
 [project.optional-dependencies]

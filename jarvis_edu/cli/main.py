@@ -138,6 +138,62 @@ def auto(ctx, config):
 
 
 @cli.command()
+@click.option('--port', '-p', default=8000, help='Dashboard port')
+@click.option('--host', default='localhost', help='Dashboard host')
+@click.pass_context
+def watch(ctx, port, host):
+    """Start folder watching with web dashboard."""
+    
+    console.print("[bold blue]🚀 Starting Jarvis EDU Watch Mode with Dashboard...[/bold blue]")
+    
+    try:
+        import asyncio
+        import uvicorn
+        from ..pipeline.auto_processor import AutoProcessor
+        from ..api.dashboard import create_dashboard_app
+        
+        # Create processor and dashboard
+        processor = AutoProcessor()
+        dashboard_app = create_dashboard_app()
+        
+        async def start_services():
+            # Start processor
+            await processor.start()
+            console.print(f"[green]📁 Watching folder:[/green] {processor.watch_folder}")
+            console.print(f"[green]📤 Output folder:[/green] {processor.output_folder}")
+            console.print(f"[green]🌐 Dashboard:[/green] http://{host}:{port}")
+            
+            # Start dashboard server
+            config = uvicorn.Config(
+                dashboard_app,
+                host=host,
+                port=port,
+                log_level="info"
+            )
+            server = uvicorn.Server(config)
+            
+            # Run both services
+            try:
+                await server.serve()
+            except KeyboardInterrupt:
+                console.print("\n[yellow]🛑 Stopping services...[/yellow]")
+                processor.stop()
+        
+        # Run the async services
+        asyncio.run(start_services())
+        
+    except ImportError as e:
+        console.print(f"[red]❌ Missing dependency: {e}[/red]")
+        console.print("[yellow]💡 Install with: pip install uvicorn[/yellow]")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]❌ Watch mode failed: {e}[/red]")
+        if ctx.obj["debug"]:
+            console.print_exception()
+        sys.exit(1)
+
+
+@cli.command()
 @click.option('--output-dir', '-o', default='config', help='Configuration output directory')
 @click.pass_context
 def init(ctx, output_dir):
