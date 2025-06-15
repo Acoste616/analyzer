@@ -106,6 +106,95 @@ def serve(ctx, host, port):
 
 
 @cli.command()
+@click.option('--config', '-c', help='Auto-mode configuration file path')
+@click.pass_context
+def auto(ctx, config):
+    """Start auto-mode for continuous processing."""
+    
+    console.print("[bold blue]🚀 Starting Jarvis EDU Auto-Mode...[/bold blue]")
+    
+    try:
+        from ..auto_mode import AutoModeProcessor
+        
+        # Show configuration info
+        console.print(f"[green]📁 Configuration file:[/green] {config or 'config/auto-mode.yaml'}")
+        console.print(f"[green]⚙️  Starting automatic processing...[/green]")
+        
+        # Start processor
+        processor = AutoModeProcessor()
+        processor.start()
+        
+    except FileNotFoundError:
+        console.print("[red]❌ Configuration file not found.[/red]")
+        console.print("[yellow]💡 Run 'jarvis-edu init' to create sample configuration[/yellow]")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]🛑 Auto-mode stopped by user[/yellow]")
+    except Exception as e:
+        console.print(f"[red]❌ Auto-mode failed: {e}[/red]")
+        if ctx.obj["debug"]:
+            console.print_exception()
+        sys.exit(1)
+
+
+@cli.command()
+@click.option('--output-dir', '-o', default='config', help='Configuration output directory')
+@click.pass_context
+def init(ctx, output_dir):
+    """Initialize Jarvis EDU configuration files."""
+    
+    config_dir = Path(output_dir)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create sample auto-mode.yaml
+    auto_config_path = config_dir / "auto-mode.yaml"
+    if not auto_config_path.exists():
+        console.print(f"[green]📝 Creating sample configuration:[/green] {auto_config_path}")
+        
+        sample_config = """# Jarvis EDU Extractor - Auto Mode Configuration
+system:
+  auto_scan: true
+  watch_folder: "./watch"
+  scan_interval: 60
+  auto_process: true
+  delete_after_process: false
+  backup_original: true
+  backup_folder: "./backup"
+  supported_formats:
+    video: [".mp4", ".avi", ".mkv", ".mov"]
+    audio: [".mp3", ".wav", ".flac", ".aac"]
+    document: [".pdf", ".docx", ".txt"]
+    image: [".jpg", ".jpeg", ".png"]
+
+llm:
+  provider: "lmstudio"
+  endpoint: "http://localhost:1234/v1"
+  model: "mistral-7b-instruct"
+  
+output:
+  base_dir: "./output"
+  organize_by_date: true
+  organize_by_type: true
+"""
+        
+        auto_config_path.write_text(sample_config, encoding='utf-8')
+        console.print("[green]✅ Sample configuration created![/green]")
+    else:
+        console.print("[yellow]⚠ Configuration file already exists[/yellow]")
+    
+    # Create directories
+    base_dir = config_dir.parent
+    for dir_name in ['watch', 'backup', 'output', 'logs']:
+        dir_path = base_dir / dir_name
+        dir_path.mkdir(exist_ok=True)
+        console.print(f"[blue]📁 Created directory:[/blue] {dir_path}")
+    
+    console.print("[bold green]✅ Initialization completed![/bold green]")
+    console.print(f"[blue]📄 Edit {auto_config_path} to customize settings[/blue]")
+    console.print("[blue]🚀 Run 'jarvis-edu auto' to start auto-mode[/blue]")
+
+
+@cli.command()
 @click.pass_context
 def status(ctx):
     """Check system status."""

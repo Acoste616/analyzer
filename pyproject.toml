@@ -113,6 +113,10 @@ dependencies = [
     "pypandoc>=1.12",
     "ebooklib>=0.18",
     "python-pptx>=0.6.23",
+    
+    # File Monitoring
+    "watchdog>=3.0.0",
+    "pyyaml>=6.0.1",
 ]
 
 [project.optional-dependencies]

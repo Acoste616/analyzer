@@ -1,0 +1,251 @@
+# Jarvis EDU Extractor - Auto Mode Configuration
+# ==============================================
+
+system:
+  auto_scan: true
+  watch_folder: "C:\\Users\\barto\\OneDrive\\Pulpit\\mediapobrane\\pobrane_media"
+  scan_interval: 60  # sprawdzaj co minutę
+  
+  # Auto-processing
+  auto_process: true
+  delete_after_process: false
+  backup_original: true
+  backup_folder: "C:\\Users\\barto\\JarvisEDU\\backup"
+  
+  # File filters
+  supported_formats:
+    video: [".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm"]
+    audio: [".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a"]
+    document: [".pdf", ".docx", ".doc", ".txt", ".pptx", ".ppt"]
+    image: [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".gif"]
+  
+  # Processing limits
+  max_file_size_mb: 2048  # 2GB
+  max_concurrent_jobs: 3
+  retry_attempts: 2
+  timeout_minutes: 30
+
+# LLM Configuration
+llm:
+  provider: "lmstudio"
+  endpoint: "http://localhost:1234/v1"
+  model: "mistral-7b-instruct"
+  api_key: null  # nie potrzebne dla LM Studio
+  
+  # Request settings
+  temperature: 0.3
+  max_tokens: 4096
+  top_p: 0.9
+  frequency_penalty: 0.1
+  presence_penalty: 0.1
+  
+  # Backup providers
+  fallback_providers:
+    - provider: "ollama"
+      endpoint: "http://localhost:11434"
+      model: "mistral:7b"
+    - provider: "groq"
+      endpoint: "https://api.groq.com/openai/v1"
+      model: "mixtral-8x7b-32768"
+      api_key: "${GROQ_API_KEY}"
+
+# Content Processing Settings
+processing:
+  # Audio/Video
+  audio_extraction:
+    format: "wav"
+    sample_rate: 16000
+    channels: 1
+    normalize: true
+  
+  whisper:
+    model: "base"  # tiny, base, small, medium, large
+    language: "pl"  # auto-detect if null
+    device: "cpu"   # cpu, cuda
+    
+  # OCR Settings
+  ocr:
+    engines: ["easyocr", "tesseract"]
+    languages: ["pl", "en"]
+    confidence_threshold: 0.7
+    
+  # Text Processing
+  text:
+    min_sentence_length: 10
+    max_chunk_size: 1000
+    overlap_size: 100
+    remove_duplicates: true
+    
+  # Image Processing
+  image:
+    resize_max_dimension: 1920
+    quality: 85
+    format: "jpg"
+
+# Output Configuration
+output:
+  base_dir: "C:\\Users\\barto\\JarvisEDU\\output"
+  organize_by_date: true
+  organize_by_type: true
+  
+  # Folder structure
+  structure:
+    raw_content: "01_raw"
+    extracted_text: "02_extracted"
+    lessons: "03_lessons"
+    summaries: "04_summaries"
+    quizzes: "05_quizzes"
+    presentations: "06_presentations"
+  
+  # Export formats
+  formats:
+    markdown: true
+    json: true
+    pdf: false
+    html: true
+    docx: false
+    
+  # Naming convention
+  naming:
+    include_timestamp: true
+    include_source: true
+    max_filename_length: 100
+    sanitize_names: true
+
+# Lesson Generation Settings
+lesson_generation:
+  enabled: true
+  
+  # Content structure
+  structure:
+    include_objectives: true
+    include_summary: true
+    include_key_points: true
+    include_examples: true
+    include_exercises: true
+    
+  # Difficulty levels
+  difficulty_levels: ["beginner", "intermediate", "advanced"]
+  default_difficulty: "intermediate"
+  
+  # Languages
+  output_language: "pl"
+  translate_content: false
+  
+  # Quiz generation
+  quiz:
+    enabled: true
+    questions_per_lesson: 5
+    question_types: ["multiple_choice", "true_false", "short_answer"]
+    difficulty_distribution:
+      easy: 40
+      medium: 40
+      hard: 20
+
+# Monitoring and Logging
+monitoring:
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  log_file: "C:\\Users\\barto\\JarvisEDU\\logs\\auto_mode.log"
+  max_log_size_mb: 100
+  backup_count: 5
+  
+  # Metrics
+  collect_metrics: true
+  metrics_file: "C:\\Users\\barto\\JarvisEDU\\metrics\\processing_stats.json"
+  
+  # Notifications
+  notifications:
+    enabled: true
+    on_success: false
+    on_error: true
+    on_completion: true
+    
+    # Notification methods
+    methods:
+      console: true
+      file: true
+      email: false
+      webhook: false
+
+# Database Configuration
+database:
+  type: "sqlite"
+  path: "C:\\Users\\barto\\JarvisEDU\\data\\jarvis_edu.db"
+  
+  # Connection settings
+  pool_size: 5
+  max_overflow: 10
+  echo: false
+  
+  # Backup
+  auto_backup: true
+  backup_interval_hours: 24
+  backup_retention_days: 30
+
+# Security Settings
+security:
+  # File validation
+  validate_files: true
+  scan_for_malware: false
+  max_file_size_mb: 2048
+  
+  # Content filtering
+  content_filter:
+    enabled: false
+    blocked_keywords: []
+    adult_content_filter: false
+    
+  # API security
+  api_rate_limiting: true
+  max_requests_per_minute: 60
+
+# Performance Settings
+performance:
+  # CPU/Memory
+  max_cpu_percent: 80
+  max_memory_percent: 70
+  
+  # Caching
+  cache:
+    enabled: true
+    type: "redis"  # memory, redis, file
+    redis_url: "redis://localhost:6379"
+    ttl_seconds: 3600
+    
+  # Parallel processing
+  multiprocessing: true
+  max_workers: 4
+  chunk_size: 1000
+
+# Integration Settings
+integrations:
+  # Vector databases
+  vector_db:
+    enabled: false
+    provider: "qdrant"  # qdrant, chroma, faiss
+    url: "http://localhost:6333"
+    collection_name: "jarvis_edu_content"
+    
+  # External APIs
+  apis:
+    youtube_dl: true
+    google_translate: false
+    deepl: false
+    
+  # Webhooks
+  webhooks:
+    on_completion: null
+    on_error: null
+    headers: {}
+
+# Development Settings
+development:
+  debug_mode: false
+  save_intermediate_files: false
+  verbose_logging: false
+  profiling: false
+  
+  # Testing
+  test_mode: false
+  mock_llm_responses: false
+  skip_heavy_processing: false 
