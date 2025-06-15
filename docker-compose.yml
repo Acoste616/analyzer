@@ -1,0 +1,155 @@
+version: '3.8'
+
+services:
+  # Main application
+  jarvis-edu:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: jarvis-edu-extractor
+    volumes:
+      - ./input:/app/input
+      - ./output:/app/output
+      - ./models:/app/models
+      - ./cache:/app/cache
+      - ./logs:/app/logs
+      - ./temp:/app/temp
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=development
+      - DATABASE__QDRANT_HOST=qdrant
+      - DATABASE__REDIS_URL=redis://redis:6379
+      - LLM__BASE_URL=http://ollama:11434
+    depends_on:
+      - qdrant
+      - redis
+    networks:
+      - jarvis-network
+    command: python -m jarvis_edu.cli status
+    
+  # Vector database
+  qdrant:
+    image: qdrant/qdrant:v1.7.0
+    container_name: jarvis-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    networks:
+      - jarvis-network
+    restart: unless-stopped
+    
+  # Cache and message broker  
+  redis:
+    image: redis:7-alpine
+    container_name: jarvis-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    command: redis-server --appendonly yes
+    networks:
+      - jarvis-network
+    restart: unless-stopped
+    
+  # Local LLM server
+  ollama:
+    image: ollama/ollama:latest
+    container_name: jarvis-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./data/ollama:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    networks:
+      - jarvis-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    
+  # Web API and UI
+  api:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: jarvis-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./output:/app/output
+    environment:
+      - PYTHONUNBUFFERED=1
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - DATABASE__QDRANT_HOST=qdrant
+      - DATABASE__REDIS_URL=redis://redis:6379
+      - LLM__BASE_URL=http://ollama:11434
+    depends_on:
+      - qdrant
+      - redis
+      - ollama
+    networks:
+      - jarvis-network
+    command: python -m jarvis_edu.cli serve --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+    
+  # Background task worker
+  worker:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: jarvis-worker
+    volumes:
+      - ./input:/app/input
+      - ./output:/app/output
+      - ./models:/app/models
+      - ./cache:/app/cache
+      - ./temp:/app/temp
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE__REDIS_URL=redis://redis:6379
+      - DATABASE__QDRANT_HOST=qdrant
+      - LLM__BASE_URL=http://ollama:11434
+    depends_on:
+      - redis
+      - qdrant
+    networks:
+      - jarvis-network
+    command: celery -A jarvis_edu.tasks worker --loglevel=info
+    restart: unless-stopped
+    
+  # Monitoring dashboard
+  flower:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: jarvis-flower
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - jarvis-network
+    command: celery -A jarvis_edu.tasks flower --port=5555
+    restart: unless-stopped
+
+networks:
+  jarvis-network:
+    driver: bridge
+
+volumes:
+  qdrant_data:
+  redis_data:
+  ollama_data: 

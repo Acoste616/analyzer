@@ -1,0 +1,188 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jarvis-edu-extractor"
+version = "0.1.0"
+description = "Advanced AI-powered educational content extractor and lesson generator"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Jarvis EDU Team", email = "dev@jarvis-edu.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.11"
+dependencies = [
+    # Core
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "click>=8.1.0",
+    "rich>=13.7.0",
+    "loguru>=0.7.2",
+    
+    # Audio/Video Processing
+    "openai-whisper>=20231117",
+    "moviepy>=1.0.3",
+    "opencv-python>=4.8.1.78",
+    "ffmpeg-python>=0.2.0",
+    "pydub>=0.25.1",
+    
+    # OCR & Document Processing
+    "easyocr>=1.7.1",
+    "pytesseract>=0.3.10",
+    "pdf2image>=1.16.3",
+    "PyPDF2>=3.0.1",
+    "pdfplumber>=0.10.3",
+    "python-docx>=1.1.0",
+    "openpyxl>=3.1.2",
+    
+    # Web Scraping
+    "beautifulsoup4>=4.12.2",
+    "playwright>=1.40.0",
+    "requests>=2.31.0",
+    "yt-dlp>=2023.12.30",
+    "httpx>=0.26.0",
+    
+    # NLP & ML
+    "spacy>=3.7.2",
+    "langdetect>=1.0.9",
+    "deep-translator>=1.11.4",
+    "transformers>=4.36.0",
+    "torch>=2.1.2",
+    "sentence-transformers>=2.2.2",
+    "bertopic>=0.16.0",
+    "nltk>=3.8.1",
+    
+    # Vector Database & Embeddings
+    "qdrant-client>=1.7.0",
+    "chromadb>=0.4.22",
+    "faiss-cpu>=1.7.4",
+    
+    # LLM Integration
+    "ollama>=0.1.7",
+    "openai>=1.6.1",
+    "anthropic>=0.8.1",
+    "langchain>=0.1.0",
+    
+    # API & Web
+    "fastapi>=0.108.0",
+    "uvicorn[standard]>=0.25.0",
+    "python-multipart>=0.0.6",
+    "websockets>=12.0",
+    "jinja2>=3.1.2",
+    "python-socketio>=5.10.0",
+    
+    # Task Queue & Cache
+    "celery[redis]>=5.3.4",
+    "redis>=5.0.1",
+    "dramatiq[redis]>=1.15.0",
+    
+    # Database & Storage
+    "sqlalchemy>=2.0.23",
+    "alembic>=1.13.1",
+    "aiosqlite>=0.19.0",
+    "minio>=7.2.0",
+    
+    # Security & Validation
+    "python-magic>=0.4.27",
+    "bleach>=6.1.0",
+    "cryptography>=41.0.8",
+    "python-jose[cryptography]>=3.3.0",
+    
+    # Monitoring & Observability  
+    "prometheus-client>=0.19.0",
+    "sentry-sdk[fastapi]>=1.39.1",
+    "structlog>=23.2.0",
+    
+    # File Processing
+    "pillow>=10.1.0",
+    "python-magic>=0.4.27",
+    "chardet>=5.2.0",
+    
+    # Export Formats
+    "markdown>=3.5.1",
+    "pypandoc>=1.12",
+    "ebooklib>=0.18",
+    "python-pptx>=0.6.23",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.3",
+    "pytest-asyncio>=0.23.2",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "pytest-xdist>=3.5.0",
+    "black>=23.12.1",
+    "flake8>=7.0.0",
+    "mypy>=1.8.0",
+    "pre-commit>=3.6.0",
+    "bandit>=1.7.5",
+    "safety>=2.3.5",
+]
+
+gpu = [
+    "torch[cuda]>=2.1.2",
+    "torchvision>=0.16.2",
+    "torchaudio>=2.1.2",
+]
+
+all = [
+    "jarvis-edu-extractor[dev,gpu]"
+]
+
+[project.scripts]
+jarvis-edu = "jarvis_edu.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/jarvis-edu/extractor"
+Documentation = "https://docs.jarvis-edu.com"
+Repository = "https://github.com/jarvis-edu/extractor"
+Issues = "https://github.com/jarvis-edu/extractor/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["jarvis_edu*"]
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+[tool.coverage.run]
+source = ["jarvis_edu"]
+omit = ["*/tests/*", "*/venv/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+] 
