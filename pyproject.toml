@@ -19,8 +19,9 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10,<3.14"
 dependencies = [
     # Core
     "python-dotenv>=1.0.0",
@@ -36,6 +37,7 @@ dependencies = [
     "opencv-python>=4.8.1.78",
     "ffmpeg-python>=0.2.0",
     "pydub>=0.25.1",
+    "mutagen>=1.47.0",
     
     # OCR & Document Processing
     "easyocr>=1.7.1",
@@ -60,7 +62,7 @@ dependencies = [
     "transformers>=4.36.0",
     "torch>=2.1.2",
     "sentence-transformers>=2.2.2",
-    "bertopic>=0.16.0",
+    # "bertopic>=0.16.0",  # Temporarily disabled due to hdbscan build issues
     "nltk>=3.8.1",
     
     # Vector Database & Embeddings

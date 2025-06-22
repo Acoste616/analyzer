@@ -35,7 +35,7 @@ class LLMConfig(BaseModel):
     
     @validator("provider")
     def validate_provider(cls, v):
-        valid_providers = ["ollama", "openai", "anthropic", "local"]
+        valid_providers = ["ollama", "openai", "anthropic", "local", "lmstudio"]
         if v not in valid_providers:
             raise ValueError(f"Provider must be one of {valid_providers}")
         return v

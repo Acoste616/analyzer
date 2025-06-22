@@ -101,8 +101,22 @@ Odpowiedź w formacie JSON z polami:
                 ) as resp:
                     result = await resp.json()
                     
+                    # NAPRAWKA: Sprawdzenie struktury odpowiedzi
+                    if 'choices' not in result:
+                        logger.error(f"LM Studio response missing 'choices': {result}")
+                        return self._fallback_lesson_structure(content)
+                    
+                    if not result['choices'] or len(result['choices']) == 0:
+                        logger.error(f"LM Studio response has empty 'choices': {result}")
+                        return self._fallback_lesson_structure(content)
+                    
+                    choice = result['choices'][0]
+                    if 'message' not in choice or 'content' not in choice['message']:
+                        logger.error(f"LM Studio response missing message/content: {choice}")
+                        return self._fallback_lesson_structure(content)
+                    
                     # Parse JSON from response
-                    response_text = result["choices"][0]["message"]["content"]
+                    response_text = choice["message"]["content"]
                     
                     # Extract JSON if wrapped in markdown
                     if "```json" in response_text:
@@ -115,6 +129,61 @@ Odpowiedź w formacie JSON z polami:
         except Exception as e:
             logger.error(f"LM Studio generation failed: {e}")
             return self._fallback_lesson_structure(content)
+    
+    async def generate_lesson_from_prompt(self, prompt: str) -> Dict[str, Any]:
+        """Generate lesson from custom prompt."""
+        messages = [
+            {"role": "system", "content": "You are an educational content expert. Respond in JSON format."},
+            {"role": "user", "content": prompt}
+        ]
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=self.headers,
+                    json={
+                        "messages": messages,
+                        "temperature": 0.7,
+                        "max_tokens": 2000,
+                        "stream": False  # NAPRAWKA: Usunięto response_format - może powodować problemy
+                    }
+                ) as resp:
+                    result = await resp.json()
+                    
+                    # NAPRAWKA: Sprawdzenie struktury odpowiedzi
+                    if 'choices' not in result:
+                        logger.error(f"LM Studio response missing 'choices': {result}")
+                        return {}
+                    
+                    if not result['choices'] or len(result['choices']) == 0:
+                        logger.error(f"LM Studio response has empty 'choices': {result}")
+                        return {}
+                    
+                    choice = result['choices'][0]
+                    if 'message' not in choice or 'content' not in choice['message']:
+                        logger.error(f"LM Studio response missing message/content: {choice}")
+                        return {}
+                    
+                    response_text = choice["message"]["content"]
+                    
+                    # Parse JSON
+                    try:
+                        return json.loads(response_text)
+                    except json.JSONDecodeError as json_err:
+                        logger.warning(f"JSON parsing failed: {json_err}. Response: {response_text}")
+                        # Fallback structure
+                        return {
+                            "title": "Lekcja bez tytułu",
+                            "summary": "Podsumowanie niedostępne",
+                            "content": response_text,
+                            "tags": ["ai-processed"],
+                            "categories": ["Ogólne"]
+                        }
+                        
+        except Exception as e:
+            logger.error(f"LM Studio prompt generation failed: {e}")
+            return {}
     
     def _fallback_lesson_structure(self, content: ExtractedContent) -> Dict[str, Any]:
         """Fallback lesson structure if LM Studio fails."""
