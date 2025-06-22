@@ -1,0 +1,25 @@
+{
+  "timestamp": "2025-06-22T17:14:08.244943",
+  "system": {
+    "platform": "Windows",
+    "python": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "cuda_available": true
+  },
+  "tests": {
+    "python": true,
+    "gpu": true,
+    "lm_studio": true,
+    "tesseract": false,
+    "ffmpeg": true,
+    "folders": true,
+    "packages": false,
+    "jarvis": true,
+    "env": true
+  },
+  "summary": {
+    "total": 9,
+    "passed": 7,
+    "failed": 2,
+    "status": "needs_fixes"
+  }
+}

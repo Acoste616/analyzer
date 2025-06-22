@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarvis EDU - Raport Przetwarzania</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .header .subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            font-size: 1.1em;
+            color: #7f8c8d;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section h2 {
+            font-size: 1.8em;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #3498db;
+        }
+
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .results-table th {
+            background: #3498db;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .results-table td {
+            padding: 15px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+
+        .results-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+
+        .results-table tr:hover {
+            background-color: #e8f4fd;
+        }
+
+        .status-success {
+            color: #27ae60;
+            font-weight: bold;
+        }
+
+        .status-failed {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        .file-type-video {
+            background: #e8f5e8;
+            color: #27ae60;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+
+        .file-type-image {
+            background: #fff3cd;
+            color: #856404;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+
+        .content-preview {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+            margin-top: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .gpu-info {
+            background: linear-gradient(135deg, #16a085 0%, #2ecc71 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .gpu-info h3 {
+            margin-bottom: 15px;
+        }
+
+        .gpu-memory {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .progress-bar {
+            background: rgba(255, 255, 255, 0.2);
+            height: 20px;
+            border-radius: 10px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            background: rgba(255, 255, 255, 0.8);
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .footer {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .timestamp {
+            color: #bdc3c7;
+            font-style: italic;
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .results-table {
+                font-size: 0.9em;
+            }
+            
+            .results-table th,
+            .results-table td {
+                padding: 10px 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧠 Jarvis EDU Extractor</h1>
+            <div class="subtitle">Raport Przetwarzania AI</div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">📊</div>
+                <div class="stat-value">{{ total_files }}</div>
+                <div class="stat-label">Łączna liczba plików</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">✅</div>
+                <div class="stat-value">{{ success_rate }}%</div>
+                <div class="stat-label">Sukces Rate</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">⏱️</div>
+                <div class="stat-value">{{ avg_processing_time }}s</div>
+                <div class="stat-label">Średni czas przetwarzania</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">🚀</div>
+                <div class="stat-value">{{ files_per_minute }}</div>
+                <div class="stat-label">Pliki na minutę</div>
+            </div>
+        </div>
+
+        <div class="content">
+            <!-- GPU Information -->
+            <div class="section">
+                <div class="gpu-info">
+                    <h3>🖥️ Informacje o GPU</h3>
+                    <div class="gpu-memory">
+                        <span><strong>GPU:</strong> {{ gpu_name }}</span>
+                        <span><strong>VRAM:</strong> {{ gpu_total_memory }} GB</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: {{ gpu_usage_percent }}%"></div>
+                    </div>
+                    <div style="text-align: center; margin-top: 10px;">
+                        <small>Maksymalne zużycie pamięci podczas przetwarzania</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Processing Results -->
+            <div class="section">
+                <h2>📋 Wyniki Przetwarzania</h2>
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>Status</th>
+                            <th>Nazwa pliku</th>
+                            <th>Typ</th>
+                            <th>Rozmiar</th>
+                            <th>Czas</th>
+                            <th>Wyodrębniona treść</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for result in results %}
+                        <tr>
+                            <td>
+                                <span class="{{ 'status-success' if result.status == 'success' else 'status-failed' }}">
+                                    {{ '✅ OK' if result.status == 'success' else '❌ BŁĄD' }}
+                                </span>
+                            </td>
+                            <td>
+                                <strong>{{ result.file_name }}</strong>
+                            </td>
+                            <td>
+                                <span class="file-type-{{ result.file_type }}">
+                                    {{ result.file_type.upper() }}
+                                </span>
+                            </td>
+                            <td>{{ "%.1f"|format(result.file_size_mb) }} MB</td>
+                            <td>{{ "%.2f"|format(result.processing_time) }}s</td>
+                            <td>
+                                <div class="content-preview">
+                                    {{ result.extracted_text[:150] }}
+                                    {{ '...' if result.extracted_text|length > 150 else '' }}
+                                </div>
+                                {% if result.llm_summary %}
+                                <div class="content-preview" style="margin-top: 10px; border-left-color: #e74c3c;">
+                                    <strong>AI Podsumowanie:</strong><br>
+                                    {{ result.llm_summary[:200] }}
+                                    {{ '...' if result.llm_summary|length > 200 else '' }}
+                                </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Statistics Details -->
+            <div class="section">
+                <h2>📈 Szczegółowe Statystyki</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">🎬</div>
+                        <div class="stat-value">{{ video_files_count }}</div>
+                        <div class="stat-label">Pliki Video</div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-icon">🖼️</div>
+                        <div class="stat-value">{{ image_files_count }}</div>
+                        <div class="stat-label">Pliki Obrazów</div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-icon">💾</div>
+                        <div class="stat-value">{{ total_size_mb }} MB</div>
+                        <div class="stat-label">Łączny rozmiar</div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-icon">⏰</div>
+                        <div class="stat-value">{{ total_processing_time }}s</div>
+                        <div class="stat-label">Łączny czas</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <div>🧠 <strong>Jarvis EDU Extractor</strong> - AI-powered Educational Content Processing</div>
+            <div class="timestamp">
+                Wygenerowano: {{ generation_time }}
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

@@ -131,6 +131,39 @@ class EnhancedVideoExtractor(BaseExtractor):
             confidence=confidence
         )
     
+    async def extract_with_memory_management(self, file_path: str) -> ExtractedContent:
+        """Extract with automatic memory management"""
+        try:
+            # Clear GPU cache before processing
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            result = await self.extract(file_path)
+            
+            # Clear cache after processing large files
+            file_size_mb = Path(file_path).stat().st_size / (1024 * 1024)
+            if file_size_mb > 100 and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                
+            return result
+            
+        except torch.cuda.OutOfMemoryError:
+            logger.error(f"GPU OOM for {file_path}, falling back to CPU")
+            torch.cuda.empty_cache()
+            
+            # Retry with CPU
+            original_device = self._whisper_model.device if hasattr(self, '_whisper_model') else None
+            if original_device:
+                self._whisper_model = self._whisper_model.to('cpu')
+            
+            result = await self.extract(file_path)
+            
+            # Restore to GPU if possible
+            if original_device and torch.cuda.is_available():
+                self._whisper_model = self._whisper_model.to(original_device)
+                
+            return result
+    
     async def _extract_video_metadata(self, file_path: str) -> Dict[str, Any]:
         """Extract detailed video metadata using ffprobe."""
         metadata = {

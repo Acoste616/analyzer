@@ -270,6 +270,26 @@ async def start_system():
         console.print("[green]✅ System stopped cleanly[/green]")
 
 
+async def start_with_restart(max_retries=3):
+    """Start system with automatic restart on failure"""
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            await start_system()
+            break
+        except Exception as e:
+            retry_count += 1
+            console.print(f"[red]System crashed (attempt {retry_count}/{max_retries}): {e}[/red]")
+            
+            if retry_count < max_retries:
+                console.print(f"[yellow]Restarting in 5 seconds...[/yellow]")
+                await asyncio.sleep(5)
+            else:
+                console.print(f"[red]Max retries reached. Exiting.[/red]")
+                raise
+
+
 def main():
     """Main entry point."""
     try:

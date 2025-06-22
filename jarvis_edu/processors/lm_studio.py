@@ -94,7 +94,10 @@ Odpowiedź w formacie JSON z polami:
                     headers=self.headers,
                     json={
                         "messages": messages,
-                        "temperature": 0.7,
+                        "temperature": 0.1,          # Anti-hallucination settings
+                        "frequency_penalty": 2.0,    # Prevent word repetition
+                        "presence_penalty": 1.0,     # Encourage topic diversity
+                        "repetition_penalty": 1.5,   # Additional repetition control
                         "max_tokens": 4000,
                         "stream": False
                     }
@@ -124,7 +127,13 @@ Odpowiedź w formacie JSON z polami:
                         json_end = response_text.find("```", json_start)
                         response_text = response_text[json_start:json_end]
                     
-                    return json.loads(response_text)
+                    # Clean response and check for hallucinations
+                    cleaned_response = self._clean_llm_response(response_text)
+                    if not cleaned_response:
+                        logger.warning("LLM lesson generation failed hallucination check")
+                        return self._fallback_lesson_structure(content)
+                    
+                    return json.loads(cleaned_response)
                     
         except Exception as e:
             logger.error(f"LM Studio generation failed: {e}")
@@ -144,7 +153,10 @@ Odpowiedź w formacie JSON z polami:
                     headers=self.headers,
                     json={
                         "messages": messages,
-                        "temperature": 0.7,
+                        "temperature": 0.1,          # Zmniejsz z 0.7 na 0.1
+                        "frequency_penalty": 2.0,    # Zwiększ z 0 na 2.0
+                        "presence_penalty": 1.0,     # Dodaj ten parametr
+                        "repetition_penalty": 1.5,   # Dodaj jeśli LM Studio wspiera
                         "max_tokens": 2000,
                         "stream": False  # NAPRAWKA: Usunięto response_format - może powodować problemy
                     }
@@ -167,9 +179,21 @@ Odpowiedź w formacie JSON z polami:
                     
                     response_text = choice["message"]["content"]
                     
+                    # Clean response and check for hallucinations
+                    cleaned_response = self._clean_llm_response(response_text)
+                    if not cleaned_response:
+                        logger.warning("LLM response failed hallucination check")
+                        return {
+                            "title": "Błąd przetwarzania AI",
+                            "summary": "AI wygenerowało nieprawidłową odpowiedź",
+                            "content": "Spróbuj ponownie z innym modelem",
+                            "tags": ["ai-error"],
+                            "categories": ["Błąd"]
+                        }
+                    
                     # Parse JSON
                     try:
-                        return json.loads(response_text)
+                        return json.loads(cleaned_response)
                     except json.JSONDecodeError as json_err:
                         logger.warning(f"JSON parsing failed: {json_err}. Response: {response_text}")
                         # Fallback structure
@@ -184,6 +208,37 @@ Odpowiedź w formacie JSON z polami:
         except Exception as e:
             logger.error(f"LM Studio prompt generation failed: {e}")
             return {}
+    
+    def _clean_llm_response(self, response: str) -> str:
+        """Clean LLM response and detect hallucinations"""
+        if not response or len(response.strip()) < 10:
+            return ""
+        
+        import re
+        from collections import Counter
+        
+        # Remove excessive whitespace
+        cleaned = re.sub(r'\s+', ' ', response.strip())
+        
+        # Detect word/phrase repetition
+        words = cleaned.split()
+        
+        if len(words) > 10:
+            word_counts = Counter(words)
+            total_words = len(words)
+            
+            # Check for excessive repetition
+            for word, count in word_counts.items():
+                if count / total_words > 0.3:  # More than 30% repetition
+                    logger.warning(f"LLM hallucination detected: '{word}' repeated {count} times")
+                    return ""
+        
+        # Check for known hallucination patterns
+        if "zastosowania nauczania" in cleaned and cleaned.count("zastosowania") > 5:
+            logger.warning("Known hallucination pattern detected")
+            return ""
+        
+        return cleaned
     
     def _fallback_lesson_structure(self, content: ExtractedContent) -> Dict[str, Any]:
         """Fallback lesson structure if LM Studio fails."""

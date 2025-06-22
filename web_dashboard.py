@@ -248,6 +248,16 @@ def main():
     if status['media_folder_exists']:
         st.sidebar.text(f"Pliki: {status['media_files_count']:,}")
     
+    # GPU Memory monitoring widget
+    if st.sidebar.button("🧹 Clear GPU Cache"):
+        torch.cuda.empty_cache()
+        st.sidebar.success("GPU cache cleared!")
+        
+    gpu_memory = torch.cuda.memory_allocated() / 1024**3 if torch.cuda.is_available() else 0
+    gpu_total = torch.cuda.get_device_properties(0).total_memory / 1024**3 if torch.cuda.is_available() else 0
+    st.sidebar.progress(gpu_memory / gpu_total if gpu_total > 0 else 0)
+    st.sidebar.caption(f"GPU: {gpu_memory:.1f}/{gpu_total:.1f} GB")
+    
     # Main content
     col1, col2, col3 = st.columns(3)
     

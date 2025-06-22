@@ -187,6 +187,30 @@ class EnhancedImageExtractor(BaseExtractor):
                 language="pl"
             )
     
+    async def extract_with_memory_management(self, file_path: str) -> ExtractedContent:
+        """Extract with automatic memory management"""
+        try:
+            # Clear GPU cache before processing
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            result = await self.extract(file_path)
+            
+            # Clear cache after processing large files
+            file_size_mb = Path(file_path).stat().st_size / (1024 * 1024)
+            if file_size_mb > 50 and torch.cuda.is_available():  # Lower threshold for images
+                torch.cuda.empty_cache()
+                
+            return result
+            
+        except torch.cuda.OutOfMemoryError:
+            logger.error(f"GPU OOM for {file_path}, falling back to CPU")
+            torch.cuda.empty_cache()
+            
+            # Retry with CPU (EasyOCR fallback)
+            result = await self.extract(file_path)
+            return result
+    
     async def _extract_metadata(self, file_path: str, image: Image) -> Dict[str, Any]:
         """Extract image metadata."""
         metadata = self.get_file_info(file_path)

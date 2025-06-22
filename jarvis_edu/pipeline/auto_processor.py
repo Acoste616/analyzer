@@ -13,7 +13,11 @@ from ..storage.knowledge_base import KnowledgeBase
 from ..watcher.folder_monitor import FolderWatcher
 from ..processors.lm_studio import LMStudioProcessor
 from ..models.content import ExtractedContent, ContentType
-from ..extractors import ImageExtractor, VideoExtractor, AudioExtractor
+from ..extractors import (
+    EnhancedImageExtractor,
+    EnhancedVideoExtractor,
+    EnhancedAudioExtractor
+)
 
 logger = get_logger(__name__)
 
@@ -37,9 +41,9 @@ class AutoProcessor:
         
         # Initialize content extractors
         self.extractors = [
-            ImageExtractor(),
-            VideoExtractor(),
-            AudioExtractor()
+            EnhancedImageExtractor(),
+            EnhancedVideoExtractor(),
+            EnhancedAudioExtractor()
         ]
         
         # Create output structure
