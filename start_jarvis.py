@@ -154,6 +154,37 @@ async def start_basic_dashboard():
         console.print(f"[red]❌ Dashboard failed: {e}[/red]")
 
 
+async def process_pending_files(processor):
+    """Process files that are stuck in queue."""
+    console.print("[blue]🔄 File processing loop started - checking every 10 seconds[/blue]")
+    first_run = True
+    
+    while True:
+        try:
+            # Get pending files
+            pending = processor.processing_queue.get_pending_files(limit=5)
+            
+            if pending:
+                console.print(f"[blue]📄 Processing {len(pending)} pending files...[/blue]")
+                
+                for file_entry in pending:
+                    try:
+                        await processor.process_file(file_entry)
+                        console.print(f"[green]✅ Processed: {Path(file_entry.filepath).name}[/green]")
+                    except Exception as e:
+                        console.print(f"[red]❌ Error processing {file_entry.filepath}: {e}[/red]")
+            elif first_run:
+                console.print("[dim]📋 No pending files in queue - waiting for new files...[/dim]")
+                first_run = False
+            
+            # Wait before next batch
+            await asyncio.sleep(10)
+            
+        except Exception as e:
+            console.print(f"[red]❌ Processing loop error: {e}[/red]")
+            await asyncio.sleep(30)
+
+
 async def start_system():
     """Start the complete Jarvis EDU system."""
     
@@ -178,6 +209,9 @@ async def start_system():
     total_modules = len(jarvis_modules)
     console.print(f"[blue]📦 Available modules: {available_modules}/{total_modules}[/blue]")
     
+    processor = None
+    processing_task = None
+    
     if jarvis_modules["AutoProcessor"]:
         console.print("\n[bold]🚀 Starting File Processor[/bold]")
         try:
@@ -185,6 +219,11 @@ async def start_system():
             await processor.start()
             console.print("[green]✅ File watcher started[/green]")
             console.print(f"[blue]📁 Watching: C:\\Users\\barto\\OneDrive\\Pulpit\\mediapobrane\\pobrane_media[/blue]")
+            
+            # Start processing loop in background
+            processing_task = asyncio.create_task(process_pending_files(processor))
+            console.print("[green]✅ File processing loop started[/green]")
+            
         except Exception as e:
             console.print(f"[red]❌ Failed to start processor: {e}[/red]")
     else:
@@ -201,6 +240,10 @@ async def start_system():
         console.print("📁 Drop files into: C:\\Users\\barto\\OneDrive\\Pulpit\\mediapobrane\\pobrane_media")
         console.print("🤖 LM Studio: " + ("Connected" if lm_studio_ok else "Not available (fallback mode)"))
         console.print(f"📦 Modules: {available_modules}/{total_modules} loaded")
+        if processor:
+            console.print("🔄 File processing: Active (checks every 10 seconds)")
+        else:
+            console.print("🔄 File processing: Disabled")
         console.print("\n[yellow]Press Ctrl+C to stop[/yellow]")
         console.print("="*60 + "\n")
         
@@ -211,6 +254,19 @@ async def start_system():
     except Exception as e:
         console.print(f"[red]❌ System error: {e}[/red]")
     finally:
+        # Clean shutdown
+        if processing_task and not processing_task.done():
+            console.print("[yellow]⏳ Stopping file processing...[/yellow]")
+            processing_task.cancel()
+            try:
+                await processing_task
+            except asyncio.CancelledError:
+                pass
+        
+        if processor:
+            console.print("[yellow]⏳ Stopping file watcher...[/yellow]")
+            processor.stop()
+        
         console.print("[green]✅ System stopped cleanly[/green]")
 
 
