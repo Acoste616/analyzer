@@ -190,8 +190,50 @@ def gpu_memory_monitor():
         }
     return None
 
+def load_processor_state():
+    """Load real-time processor state from shared files"""
+    processor_state = {
+        'active_tasks': 0,
+        'queued_tasks': 0,
+        'processed_today': 0,
+        'uptime_minutes': 0,
+        'active_files': [],
+        'running': False
+    }
+    
+    processor_state_file = Path("output/processor_state.json")
+    
+    if processor_state_file.exists():
+        try:
+            with open(processor_state_file, 'r', encoding='utf-8') as f:
+                state_data = json.load(f)
+                processor_state.update(state_data)
+                processor_state['running'] = True
+        except Exception as e:
+            st.sidebar.error(f"Error loading processor state: {e}")
+    
+    return processor_state
+
+def load_processing_history():
+    """Load processing history for charts"""
+    history_file = Path("output/processing_history.json")
+    
+    if history_file.exists():
+        try:
+            with open(history_file, 'r', encoding='utf-8') as f:
+                history = json.load(f)
+                return history
+        except Exception as e:
+            st.sidebar.error(f"Error loading processing history: {e}")
+    
+    return None
+
 def main():
     """Główna funkcja dashboard"""
+    
+    # Auto-refresh session state initialization
+    if 'last_refresh' not in st.session_state:
+        st.session_state.last_refresh = datetime.now()
     
     # Header
     st.title("🧠 Jarvis EDU Extractor Dashboard")
@@ -200,15 +242,18 @@ def main():
     # Auto-refresh controls
     col1, col2 = st.columns([1, 4])
     with col1:
-        auto_refresh = st.checkbox("🔄 Auto-refresh (30s)", value=False)
+        auto_refresh = st.checkbox("🔄 Auto-refresh (5s)", value=True)
     with col2:
         if st.button("🔄 Odśwież teraz"):
+            st.session_state.last_refresh = datetime.now()
             st.rerun()
     
-    # Auto-refresh logic
+    # Auto-refresh logic - every 5 seconds
     if auto_refresh:
-        time.sleep(1)  # Prevent too fast refresh
-        st.rerun()
+        time_since_refresh = (datetime.now() - st.session_state.last_refresh).total_seconds()
+        if time_since_refresh > 5:
+            st.session_state.last_refresh = datetime.now()
+            st.rerun()
     
     # Sidebar
     st.sidebar.title("⚙️ Kontrola Systemu")
@@ -321,6 +366,90 @@ def main():
                 st.warning(f"🔶 Średnie zużycie GPU Memory: {gpu_mem['usage_percent']:.1f}%")
             else:
                 st.success(f"✅ Normalne zużycie GPU Memory: {gpu_mem['usage_percent']:.1f}%")
+    
+    # Real-time processing status
+    st.markdown("### 📊 Real-Time Processing Status")
+    
+    # Load processor state from continuous processor
+    processor_state = load_processor_state()
+    
+    if processor_state['running']:
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("🔄 Active Tasks", processor_state.get('active_tasks', 0))
+        
+        with col2:
+            st.metric("📋 Queued", processor_state.get('queued_tasks', 0))
+        
+        with col3:
+            st.metric("✅ Processed Today", processor_state.get('processed_today', 0))
+        
+        with col4:
+            uptime = processor_state.get('uptime_minutes', 0)
+            st.metric("⏱️ Uptime", f"{uptime//60}h {uptime%60}m")
+        
+        # Current processing files
+        active_files = processor_state.get('active_files', [])
+        if active_files:
+            st.markdown("#### 🎬 Currently Processing:")
+            for file in active_files[:5]:
+                progress = file.get('progress', 0)
+                st.progress(progress / 100.0 if progress <= 100 else 1.0)
+                elapsed_time = file.get('elapsed_time', 0)
+                st.caption(f"{file['name']} - {file['type']} - {elapsed_time}s")
+        else:
+            st.info("💤 No files currently being processed")
+        
+        # Processing speed chart
+        if st.checkbox("📈 Show processing speed chart"):
+            history = load_processing_history()
+            if history and 'entries' in history:
+                try:
+                    # Create DataFrame
+                    df = pd.DataFrame(history['entries'])
+                    if not df.empty and 'timestamp' in df.columns:
+                        df['timestamp'] = pd.to_datetime(df['timestamp'])
+                        df = df.set_index('timestamp')
+                        
+                        # Files per hour chart
+                        hourly = df.resample('1H').size()
+                        if not hourly.empty:
+                            st.line_chart(hourly, use_container_width=True)
+                            st.caption("Files processed per hour")
+                        else:
+                            st.info("No hourly data available yet")
+                    else:
+                        st.info("No processing history data available")
+                except Exception as e:
+                    st.error(f"Error creating chart: {e}")
+            else:
+                st.info("No processing history available")
+        
+        # Live processor logs (if available)
+        if st.checkbox("📄 Show live processor logs"):
+            log_file = Path("logs/jarvis_continuous.log")
+            if log_file.exists():
+                try:
+                    # Read last 10 lines
+                    with open(log_file, 'r', encoding='utf-8') as f:
+                        lines = f.readlines()
+                        last_lines = lines[-10:] if len(lines) > 10 else lines
+                    
+                    st.text_area("Recent Processor Logs", 
+                               value=''.join(last_lines), 
+                               height=200, 
+                               key="processor_logs")
+                except Exception as e:
+                    st.error(f"Error reading logs: {e}")
+            else:
+                st.info("Log file not found")
+    else:
+        st.info("🔄 Processor not running or state not available")
+        
+        if st.button("🚀 Start Continuous Processor"):
+            st.info("To start the processor, run: python start_jarvis.py")
+            st.code("python start_jarvis.py")
     
     # Processing Results with MEGA ADVANCED detection
     st.markdown("### 📋 Wyniki Przetwarzania (MEGA Advanced System)")

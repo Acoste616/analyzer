@@ -62,6 +62,8 @@ class ContinuousProcessor:
         self.io_executor = ThreadPoolExecutor(max_workers=4)
         
         self._running = False
+        self.start_time = datetime.now()
+        self.processed_today = 0
         self._load_processed_hashes()
     
     def _load_processed_hashes(self):
@@ -100,7 +102,8 @@ class ContinuousProcessor:
             asyncio.create_task(self._folder_scanner()),
             asyncio.create_task(self._task_processor()),
             asyncio.create_task(self._gpu_monitor()),
-            asyncio.create_task(self._periodic_cleanup())
+            asyncio.create_task(self._periodic_cleanup()),
+            asyncio.create_task(self._state_monitor())
         ]
         
         try:
@@ -305,6 +308,10 @@ class ContinuousProcessor:
             processing_time = (datetime.now() - start_time).total_seconds()
             logger.info(f"✅ Processed {file_path.name} in {processing_time:.1f}s")
             
+            # Update counters and save history
+            self.processed_today += 1
+            self._save_processing_history(file_path, task.file_type, processing_time, True)
+            
             # Zapisz cache co 10 plików
             if len(self.processed_hashes) % 10 == 0:
                 self._save_processed_hashes()
@@ -314,6 +321,9 @@ class ContinuousProcessor:
             task.retry_count += 1
             task.last_error = str(e)
             
+            # Save failed processing to history
+            processing_time = (datetime.now() - start_time).total_seconds()
+            
             # Retry logic
             if task.retry_count < 3:
                 task.priority = min(task.priority + 1, 5)  # Obniż priorytet
@@ -321,6 +331,8 @@ class ContinuousProcessor:
                 logger.info(f"Requeued {file_path.name} for retry {task.retry_count}/3")
             else:
                 logger.error(f"Max retries reached for {file_path.name}")
+                # Save failed processing to history (final failure)
+                self._save_processing_history(file_path, task.file_type, processing_time, False)
                 # Oznacz jako przetworzony żeby nie próbować w nieskończoność
                 self.processed_hashes.add(file_hash)
         
@@ -510,6 +522,92 @@ class ContinuousProcessor:
                 
             except Exception as e:
                 logger.error(f"Cleanup error: {e}")
+    
+    def _save_processor_state(self):
+        """Save current processor state for web dashboard"""
+        try:
+            # Calculate active files info
+            active_files = []
+            for file_path, task in self.active_tasks.items():
+                if not task.done():
+                    # Try to get task info from file path
+                    path_obj = Path(file_path)
+                    active_files.append({
+                        'name': path_obj.name,
+                        'type': path_obj.suffix[1:] if path_obj.suffix else 'unknown',
+                        'progress': 50,  # Default progress - could be enhanced
+                        'elapsed_time': int((datetime.now() - self.start_time).total_seconds())
+                    })
+            
+            # Calculate uptime
+            uptime_minutes = int((datetime.now() - self.start_time).total_seconds() / 60)
+            
+            state = {
+                'active_tasks': len(self.active_tasks),
+                'queued_tasks': self.processing_tasks.qsize(),
+                'processed_today': self.processed_today,
+                'uptime_minutes': uptime_minutes,
+                'active_files': active_files,
+                'running': self._running,
+                'last_update': datetime.now().isoformat(),
+                'start_time': self.start_time.isoformat(),
+                'max_concurrent_images': self.max_concurrent_images,
+                'max_concurrent_videos': self.max_concurrent_videos,
+                'total_processed': len(self.processed_hashes)
+            }
+            
+            state_file = self.output_folder / "processor_state.json"
+            with open(state_file, 'w', encoding='utf-8') as f:
+                json.dump(state, f, indent=2)
+                
+        except Exception as e:
+            logger.error(f"Failed to save processor state: {e}")
+    
+    def _save_processing_history(self, file_path: Path, file_type: str, 
+                               processing_time: float, success: bool):
+        """Save processing history for charts"""
+        try:
+            history_file = self.output_folder / "processing_history.json"
+            
+            # Load existing history
+            if history_file.exists():
+                with open(history_file, 'r', encoding='utf-8') as f:
+                    history = json.load(f)
+            else:
+                history = {'entries': []}
+            
+            # Add new entry
+            entry = {
+                'timestamp': datetime.now().isoformat(),
+                'file_name': file_path.name,
+                'file_type': file_type,
+                'processing_time': processing_time,
+                'success': success,
+                'file_size_mb': file_path.stat().st_size / (1024 * 1024)
+            }
+            
+            history['entries'].append(entry)
+            
+            # Keep only last 1000 entries
+            if len(history['entries']) > 1000:
+                history['entries'] = history['entries'][-1000:]
+            
+            # Save updated history
+            with open(history_file, 'w', encoding='utf-8') as f:
+                json.dump(history, f, indent=2)
+                
+        except Exception as e:
+            logger.error(f"Failed to save processing history: {e}")
+    
+    async def _state_monitor(self):
+        """Monitor and save processor state for web dashboard"""
+        while self._running:
+            try:
+                self._save_processor_state()
+                await asyncio.sleep(5)  # Update every 5 seconds for real-time dashboard
+            except Exception as e:
+                logger.error(f"State monitor error: {e}")
+                await asyncio.sleep(10)
     
     def stop(self):
         """Zatrzymaj processor"""
