@@ -1,0 +1,129 @@
+# Jarvis EDU Continuous Processor Configuration
+# ============================================
+
+system:
+  watch_folder: "C:/Users/barto/OneDrive/Pulpit/mediapobrane/pobrane_media"
+  output_folder: "output"
+  scan_interval: 60  # seconds
+  
+  # Auto-recovery
+  auto_restart: true
+  max_restart_attempts: 5
+  restart_delay_multiplier: 2  # exponential backoff
+  
+processing:
+  # Concurrent limits
+  max_concurrent_images: 5
+  max_concurrent_videos: 2
+  max_concurrent_audio: 3
+  
+  # GPU management
+  gpu_memory_threshold: 0.8  # 80%
+  gpu_cleanup_threshold: 0.9  # 90% triggers cleanup
+  
+  # Timeouts (seconds)
+  timeouts:
+    image:
+      small: 60      # < 10MB
+      medium: 300    # < 50MB  
+      large: 600     # > 50MB
+    video:
+      small: 1800    # < 100MB (30 min)
+      medium: 3600   # < 500MB (60 min)
+      large: 5400    # < 1GB (90 min)
+      xlarge: 7200   # > 1GB (120 min)
+    audio:
+      default: 1800  # 30 min
+  
+  # Retry logic
+  max_retries: 3
+  retry_delay: 300  # 5 minutes
+  
+  # Priority system (1=highest, 5=lowest)
+  priorities:
+    image: 2
+    video_small: 3
+    video_large: 5
+    audio: 3
+    failed_retry: 4
+
+extraction:
+  # OCR settings
+  ocr:
+    engines: ["easyocr", "tesseract"]
+    languages: ["pl", "en"]
+    confidence_threshold: 0.6
+    cache_results: true
+    max_image_dimension: 4096
+  
+  # Video settings
+  video:
+    keyframe_extraction: true
+    max_keyframes: 30
+    sample_long_videos: true
+    sample_interval: 600  # 10 minutes
+    sample_duration: 120  # 2 minutes
+    
+  # Audio/Whisper settings
+  whisper:
+    model: "base"
+    language: "pl"
+    device: "cuda"  # or "cpu"
+    batch_size: 1
+    
+  # AI enhancement
+  ai:
+    enable: true
+    provider: "lmstudio"
+    endpoint: "http://localhost:1234/v1"
+    model: "auto"  # auto-detect
+    max_tokens: 1000
+    temperature: 0.3
+    timeout: 60
+
+storage:
+  # Knowledge base
+  knowledge_base:
+    enable: true
+    categorize: true
+    generate_quizzes: false
+    
+  # File organization  
+  organize_by_date: true
+  organize_by_type: true
+  keep_originals: true
+  
+  # Cleanup
+  cleanup:
+    enable: true
+    interval: 3600  # 1 hour
+    temp_file_age: 86400  # 24 hours
+    cache_size_limit: 10737418240  # 10GB
+
+monitoring:
+  # System monitoring
+  system_check_interval: 60
+  log_level: "INFO"
+  
+  # Metrics
+  export_metrics: true
+  metrics_port: 9090
+  
+  # Alerts
+  alerts:
+    high_gpu_usage: 0.9
+    high_cpu_usage: 0.9
+    queue_backlog: 100
+    
+  # Dashboard
+  dashboard:
+    enable: true
+    port: 8000
+    auto_open_browser: true
+    
+# Development/Debug
+debug:
+  save_intermediate_files: false
+  verbose_logging: false
+  mock_ai_responses: false
+  process_limit: null  # Set number to limit files processed 
