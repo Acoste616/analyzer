@@ -200,6 +200,9 @@ class ContinuousProcessor:
                     # Wróć do kolejki jeśli nie możemy przetworzyć
                     await self.processing_tasks.put(task)
                     await asyncio.sleep(5)
+                
+                # Export state every iteration
+                await self._export_state()
                     
             except Exception as e:
                 logger.error(f"Task processor error: {e}")
@@ -608,6 +611,98 @@ class ContinuousProcessor:
             except Exception as e:
                 logger.error(f"State monitor error: {e}")
                 await asyncio.sleep(10)
+    
+    async def _export_state(self):
+        """Export processor state for dashboard"""
+        try:
+            state = {
+                'active_tasks': len([t for t in self.active_tasks.values() if not t.done()]),
+                'queued_tasks': self.processing_tasks.qsize(),
+                'processed_today': len([h for h in self.processed_hashes if self._is_today(h)]),
+                'uptime_minutes': int((datetime.now() - self.start_time).total_seconds() / 60),
+                'active_files': [],
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            # Add active files info
+            for file_path, task in self.active_tasks.items():
+                if not task.done():
+                    # Get task info from processing tasks
+                    file_info = {
+                        'name': Path(file_path).name,
+                        'type': self._get_file_type(file_path),
+                        'elapsed_time': 'N/A',  # Would need to track start times
+                        'progress': 0.5  # Estimate
+                    }
+                    state['active_files'].append(file_info)
+            
+            # Save state
+            state_file = self.output_folder / "processor_state.json"
+            with open(state_file, 'w') as f:
+                json.dump(state, f, indent=2)
+            
+            # Also update processing history
+            await self._update_history()
+            
+        except Exception as e:
+            logger.error(f"Failed to export state: {e}")
+
+    async def _update_history(self):
+        """Update processing history for charts"""
+        history_file = self.output_folder / "processing_history.json"
+        
+        # Load existing or create new
+        if history_file.exists():
+            with open(history_file, 'r') as f:
+                history = json.load(f)
+        else:
+            history = {'entries': []}
+        
+        # Add current entry
+        entry = {
+            'timestamp': datetime.now().isoformat(),
+            'processed_count': len(self.processed_hashes),
+            'active_tasks': len([t for t in self.active_tasks.values() if not t.done()]),
+            'queue_size': self.processing_tasks.qsize()
+        }
+        
+        history['entries'].append(entry)
+        
+        # Keep only last 24 hours
+        cutoff = datetime.now() - timedelta(hours=24)
+        history['entries'] = [
+            e for e in history['entries'] 
+            if datetime.fromisoformat(e['timestamp']) > cutoff
+        ]
+        
+        # Save
+        with open(history_file, 'w') as f:
+            json.dump(history, f, indent=2)
+
+    def _is_today(self, file_hash: str) -> bool:
+        """Check if file was processed today (placeholder logic)"""
+        # This is a simplified implementation
+        # In a real scenario, you'd want to track processing dates
+        # For now, just return True if hash exists (conservative estimate)
+        return True
+
+    def _get_file_type(self, file_path: str) -> str:
+        """Get file type from file path"""
+        path_obj = Path(file_path)
+        ext = path_obj.suffix.lower()
+        
+        image_exts = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
+        video_exts = {'.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv'}
+        audio_exts = {'.mp3', '.wav', '.m4a', '.flac', '.ogg'}
+        
+        if ext in image_exts:
+            return 'image'
+        elif ext in video_exts:
+            return 'video'
+        elif ext in audio_exts:
+            return 'audio'
+        else:
+            return 'unknown'
     
     def stop(self):
         """Zatrzymaj processor"""
