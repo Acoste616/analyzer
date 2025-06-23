@@ -129,17 +129,68 @@ class RealProductionProcessor:
         
         return sample_files[:max_files]
 
+    def _get_video_duration_minutes(self, file_path: Path) -> float:
+        """Get video duration in minutes using ffprobe"""
+        try:
+            import subprocess
+            import json
+            
+            cmd = [
+                'ffprobe',
+                '-v', 'quiet',
+                '-print_format', 'json',
+                '-show_format',
+                str(file_path)
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                duration_seconds = float(data['format']['duration'])
+                return duration_seconds / 60.0
+        except Exception as e:
+            print(f"   ⚠️ Could not get video duration: {e}")
+        
+        # Fallback: estimate from file size (rough approximation)
+        file_size_mb = file_path.stat().st_size / (1024 * 1024)
+        estimated_minutes = file_size_mb / 10  # Rough: 10MB per minute
+        return estimated_minutes
+
+    def _get_timeout_for_video(self, duration_minutes: float) -> int:
+        """Get appropriate timeout based on video duration"""
+        if duration_minutes <= 30:
+            timeout = 30 * 60  # 30 minutes timeout
+            print(f"   ⏱️ Video {duration_minutes:.1f}min → timeout {timeout//60}min")
+        elif duration_minutes <= 120:
+            timeout = 60 * 60  # 60 minutes timeout
+            print(f"   ⏱️ Video {duration_minutes:.1f}min → timeout {timeout//60}min")
+        else:
+            timeout = 120 * 60  # 120 minutes timeout
+            print(f"   ⏱️ Long video {duration_minutes:.1f}min → timeout {timeout//60}min")
+        
+        return timeout
+
     async def extract_real_content(self, file_path: Path) -> Optional[Dict[str, Any]]:
-        """Extract REAL content using Jarvis extractors"""
+        """Extract REAL content using Jarvis extractors with smart timeout handling"""
         if not JARVIS_AVAILABLE:
-            return None
+            return {
+                'content': 'Jarvis extractors not available',
+                'confidence': 0.0,
+                'metadata': {'error': 'Jarvis not available'},
+                'type': 'error',
+                'title': f'Error - {file_path.stem}',
+                'summary': 'Jarvis extractors not initialized'
+            }
             
         file_ext = file_path.suffix.lower()
         
         try:
             if file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
                 print(f"   🖼️ Extracting image content...")
-                extraction_result = await self.image_extractor.extract(str(file_path))
+                extraction_result = await asyncio.wait_for(
+                    self.image_extractor.extract(str(file_path)),
+                    timeout=60  # 1 minute for images
+                )
                 return {
                     'content': extraction_result.content,
                     'confidence': extraction_result.confidence,
@@ -151,11 +202,23 @@ class RealProductionProcessor:
                 
             elif file_ext in ['.mp4', '.avi', '.mov', '.mkv']:
                 print(f"   🎬 Extracting video content...")
-                extraction_result = await self.video_extractor.extract(str(file_path))
+                
+                # Get video duration and set appropriate timeout
+                duration_minutes = self._get_video_duration_minutes(file_path)
+                timeout = self._get_timeout_for_video(duration_minutes)
+                
+                extraction_result = await asyncio.wait_for(
+                    self.video_extractor.extract(str(file_path)),
+                    timeout=timeout
+                )
                 return {
                     'content': extraction_result.content,
                     'confidence': extraction_result.confidence,
-                    'metadata': extraction_result.metadata,
+                    'metadata': {
+                        **extraction_result.metadata,
+                        'duration_minutes': duration_minutes,
+                        'processing_timeout': timeout
+                    },
                     'type': 'video',
                     'title': extraction_result.title,
                     'summary': extraction_result.summary
@@ -163,11 +226,24 @@ class RealProductionProcessor:
                 
             elif file_ext in ['.mp3', '.wav', '.m4a']:
                 print(f"   🎵 Extracting audio content...")
-                extraction_result = await self.audio_extractor.extract(str(file_path))
+                
+                # Audio timeout based on file size
+                file_size_mb = file_path.stat().st_size / (1024 * 1024)
+                audio_timeout = min(max(int(file_size_mb * 10), 60), 3600)  # 10s per MB, min 1min, max 1hour
+                print(f"   ⏱️ Audio {file_size_mb:.1f}MB → timeout {audio_timeout//60}min")
+                
+                extraction_result = await asyncio.wait_for(
+                    self.audio_extractor.extract(str(file_path)),
+                    timeout=audio_timeout
+                )
                 return {
                     'content': extraction_result.content,
                     'confidence': extraction_result.confidence,
-                    'metadata': extraction_result.metadata,
+                    'metadata': {
+                        **extraction_result.metadata,
+                        'file_size_mb': file_size_mb,
+                        'processing_timeout': audio_timeout
+                    },
                     'type': 'audio',
                     'title': extraction_result.title,
                     'summary': extraction_result.summary
@@ -175,11 +251,37 @@ class RealProductionProcessor:
                 
             else:
                 print(f"   ❓ Unsupported file type: {file_ext}")
-                return None
+                return {
+                    'content': f'Unsupported file type: {file_ext}',
+                    'confidence': 0.0,
+                    'metadata': {'error': f'Unsupported extension: {file_ext}'},
+                    'type': 'unsupported',
+                    'title': f'Unsupported - {file_path.stem}',
+                    'summary': f'File type {file_ext} is not supported'
+                }
                 
+        except asyncio.TimeoutError:
+            error_msg = f"Processing timeout for {file_path.name}"
+            print(f"   ⏰ {error_msg}")
+            return {
+                'content': f'Processing timeout: {file_path.name}',
+                'confidence': 0.0,
+                'metadata': {'error': 'timeout', 'file_path': str(file_path)},
+                'type': 'timeout',
+                'title': f'Timeout - {file_path.stem}',
+                'summary': f'Processing took too long for {file_path.name}'
+            }
         except Exception as e:
-            print(f"   ❌ Extraction error: {e}")
-            return None
+            error_msg = f"Extraction error: {e}"
+            print(f"   ❌ {error_msg}")
+            return {
+                'content': f'Extraction error: {str(e)}',
+                'confidence': 0.0,
+                'metadata': {'error': str(e), 'file_path': str(file_path)},
+                'type': 'error',
+                'title': f'Error - {file_path.stem}',
+                'summary': f'Failed to process {file_path.name}: {str(e)}'
+            }
 
     def analyze_extracted_content(self, extracted_data: Dict[str, Any], file_path: Path) -> Dict[str, Any]:
         """Analyze REAL extracted content instead of filename"""
@@ -193,6 +295,20 @@ class RealProductionProcessor:
                 "matched_keywords": [],
                 "confidence": 0,
                 "extraction_quality": "failed"
+            }
+        
+        # Handle error cases (timeout, unsupported, etc.)
+        content_type = extracted_data.get('type', 'unknown')
+        if content_type in ['error', 'timeout', 'unsupported']:
+            print(f"   ⚠️ Handling {content_type} case for {file_path.name}")
+            return {
+                "primary_category": "Processing_Error",
+                "primary_subcategory": content_type.title(),
+                "detected_categories": {},
+                "matched_keywords": [],
+                "confidence": 0,
+                "extraction_quality": content_type,
+                "error_details": extracted_data.get('metadata', {}).get('error', 'Unknown error')
             }
         
         # Get actual extracted text content
@@ -384,7 +500,7 @@ Odpowiedz TYLKO jednym krótkim zdaniem."""
         polish_summary = self.create_polish_summary(file_path, analysis, extracted_data)
         
         # STEP 4: Try AI enhancement
-        content_for_ai = extracted_data['content'] if extracted_data else ""
+        content_for_ai = extracted_data.get('content', '') if extracted_data else ""
         ai_enhancement = await self.try_ai_enhancement(content_for_ai[:1000], analysis)
         
         processing_time = time.time() - start_time
