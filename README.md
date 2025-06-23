@@ -65,21 +65,47 @@ cp env.example .env
 make run
 ```
 
-## 🎯 Szybki start
+## 🚀 Quick Start
 
-### 🚀 Metoda 1: Kompletny system (Zalecana)
+### Continuous Processing Mode (Recommended)
 
-```bash
-# Uruchom cały system z dashboardem
-python start_jarvis.py
-```
+1. **Configure watch folder**:
+   ```bash
+   # Edit config/continuous_processor.yaml
+   # Set your media folder path
+   ```
 
-Ta komenda:
-- ✅ Sprawdza połączenie z LM Studio
-- 📁 Tworzy wymagane foldery
-- 🔍 Uruchamia monitorowanie folderów
-- 🌐 Otwiera dashboard w przeglądarce
-- 🤖 Automatycznie przetwarza nowe pliki
+2. **Start the system**:
+   ```bash
+   python start_jarvis.py
+   ```
+
+3. **Access dashboard**:
+   - Open http://localhost:8000 in your browser
+   - Monitor real-time processing
+   - View extracted content and categories
+
+4. **Add files**:
+   - Simply copy/move files to your watch folder
+   - System automatically processes them based on priority
+   - Images process faster than long videos
+
+### Features
+
+- **Automatic Processing**: Continuously monitors folder for new media
+- **Smart Prioritization**: Images before videos, small files before large
+- **GPU Management**: Automatic memory management and cleanup
+- **Long Video Support**: Handles 3+ hour videos with sampling
+- **Multi-Engine OCR**: EasyOCR + Tesseract with fallbacks
+- **Auto-Recovery**: Restarts on crashes, retries failed files
+- **Real-time Dashboard**: Monitor progress and results
+
+### Processing Times (RTX 4050)
+
+- **Images**: 5-30 seconds (depends on text complexity)
+- **Short videos** (<30min): 5-30 minutes
+- **Long videos** (1-3h): 30-90 minutes
+- **Very long videos** (3h+): 60-120 minutes (with sampling)
 
 ### CLI Interface
 
@@ -140,45 +166,49 @@ Po uruchomieniu serwera:
 - **Real-time Processing**: WebSocket updates
 - **Knowledge Base**: Searchable lessons database
 
-## 📁 Struktura projektu
+## 📁 Project Structure
 
 ```
 jarvis-edu-extractor/
-├── jarvis_edu/                 # Główny kod aplikacji
-│   ├── core/                   # Podstawowe moduły
-│   │   ├── config.py          # Konfiguracja
-│   │   └── logger.py          # System logowania
-│   ├── extractors/            # Ekstraktory treści
-│   │   ├── video_extractor.py
-│   │   ├── audio_extractor.py
-│   │   ├── image_extractor.py
-│   │   ├── web_extractor.py
-│   │   └── document_extractor.py
-│   ├── processors/            # Przetwarzanie danych
-│   │   ├── llm_processor.py
-│   │   ├── translation.py
-│   │   └── lesson_generator.py
-│   ├── models/               # Modele danych
+├── jarvis_edu/
+│   ├── pipeline/
+│   │   ├── continuous_processor.py  # Main continuous processing engine
+│   │   └── auto_processor.py        # Legacy batch processor
+│   ├── extractors/
+│   │   ├── enhanced_image_extractor.py  # Multi-engine OCR
+│   │   ├── enhanced_video_extractor.py  # Video with sampling
+│   │   └── enhanced_audio_extractor.py  # Audio transcription
+│   ├── core/                       # Podstawowe moduły
+│   │   ├── config.py              # Konfiguracja
+│   │   ├── config_loader.py       # Configuration management
+│   │   └── logger.py              # System logowania
+│   ├── processors/                # Przetwarzanie danych
+│   │   ├── lm_studio.py          # LM Studio integration
+│   │   └── llm_processor.py      # LLM processing
+│   ├── models/                   # Modele danych
 │   │   ├── content.py
 │   │   ├── lesson.py
 │   │   └── processing.py
-│   ├── storage/              # Zarządzanie danymi
-│   │   ├── vector_store.py
-│   │   └── database.py
-│   ├── api/                  # REST API
-│   │   ├── routes.py
-│   │   └── websocket.py
-│   ├── web/                  # Web UI
-│   │   ├── templates/
-│   │   └── static/
-│   └── cli/                  # CLI interface
+│   ├── storage/                  # Educational content storage
+│   │   ├── knowledge_base.py     # Educational content storage
+│   │   └── database.py           # Processing queue
+│   ├── api/                      # REST API
+│   │   ├── dashboard.py          # Web dashboard API
+│   │   └── routes.py
+│   ├── watcher/                  # File monitoring
+│   │   └── folder_monitor.py
+│   └── cli/                      # CLI interface
 │       └── main.py
-├── tests/                    # Testy
-├── docs/                     # Dokumentacja
-├── docker-compose.yml        # Docker setup
-├── Dockerfile               # Container definition
-├── Makefile                 # Automation commands
-└── README.md               # Ten plik
+├── config/
+│   └── continuous_processor.yaml    # Main configuration
+├── tests/                          # Testy
+├── docs/                           # Dokumentacja
+├── start_jarvis.py                 # Auto-recovery launcher
+├── web_dashboard.py                # Real-time monitoring
+├── docker-compose.yml              # Docker setup
+├── Dockerfile                      # Container definition
+├── Makefile                        # Automation commands
+└── README.md                       # Ten plik
 ```
 
 ## 🔧 Konfiguracja

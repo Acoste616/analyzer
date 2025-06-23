@@ -30,6 +30,39 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
+# Install additional tools for video processing
+RUN apt-get update && apt-get install -y \
+    # Video tools
+    mediainfo \
+    # Process management
+    supervisor \
+    htop \
+    # Cleanup
+    && rm -rf /var/lib/apt/lists/*
+
+# Add supervisor config
+RUN mkdir -p /etc/supervisor/conf.d
+COPY <<EOF /etc/supervisor/conf.d/jarvis.conf
+[supervisord]
+nodaemon=true
+
+[program:jarvis-processor]
+command=python /app/start_jarvis.py
+directory=/app
+autostart=true
+autorestart=true
+stderr_logfile=/app/logs/processor.err.log
+stdout_logfile=/app/logs/processor.out.log
+
+[program:jarvis-dashboard]
+command=streamlit run /app/web_dashboard.py --server.port 8501
+directory=/app
+autostart=true
+autorestart=true
+stderr_logfile=/app/logs/dashboard.err.log
+stdout_logfile=/app/logs/dashboard.out.log
+EOF
+
 # Set working directory
 WORKDIR /app
 
@@ -65,5 +98,5 @@ USER jarvis
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import jarvis_edu; print('OK')" || exit 1
 
-# Default command
-CMD ["python", "-m", "jarvis_edu.cli", "--help"] 
+# Change CMD to use supervisor
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/jarvis.conf"] 

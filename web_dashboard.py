@@ -10,6 +10,9 @@ from pathlib import Path
 from datetime import datetime
 import os
 import time
+import sqlite3
+import subprocess
+import sys
 
 # Page config
 st.set_page_config(
@@ -18,6 +21,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Add project root to path
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
 
 def check_jarvis_availability():
     """Sprawdzenie dostępności Jarvis ekstraktów"""
@@ -44,20 +51,16 @@ def check_jarvis_availability():
 def check_system_status():
     """Sprawdzanie statusu systemu"""
     status = {
-        'python_version': f"{os.sys.version_info.major}.{os.sys.version_info.minor}.{os.sys.version_info.micro}",
-        'gpu_available': False,
-        'gpu_name': 'N/A',
-        'gpu_memory': 'N/A',
-        'gpu_memory_allocated': 0,
-        'gpu_memory_reserved': 0,
-        'gpu_memory_free': 0,
-        'gpu_memory_total': 0,
-        'gpu_memory_usage_percent': 0,
+        'python_version': sys.version.split()[0],
+        'gpu_available': torch.cuda.is_available(),
+        'gpu_name': torch.cuda.get_device_name(0) if torch.cuda.is_available() else "Niedostępny",
+        'gpu_memory': f"{torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB" if torch.cuda.is_available() else "N/A",
+        'gpu_memory_usage_percent': (torch.cuda.memory_allocated() / torch.cuda.get_device_properties(0).total_memory * 100) if torch.cuda.is_available() else 0,
         'lm_studio_connected': False,
-        'lm_studio_model': 'N/A',
+        'lm_studio_model': 'Niedostępny',
         'media_folder_exists': False,
         'media_files_count': 0,
-        'jarvis_available': False,
+        'jarvis_available': check_jarvis_availability(),
         'tesseract_available': False
     }
     
@@ -88,30 +91,188 @@ def check_system_status():
         pass
     
     # Media folder check
-    media_folder = Path("C:/Users/barto/OneDrive/Pulpit/mediapobrane/pobrane_media")
+    media_folder = Path("data/uploads")
     if media_folder.exists():
         status['media_folder_exists'] = True
         files = list(media_folder.rglob("*"))
         status['media_files_count'] = len([f for f in files if f.is_file()])
     
-    # Jarvis check
-    status['jarvis_available'] = check_jarvis_availability()
-    
     # Tesseract check
     try:
-        import pytesseract
-        from PIL import Image
-        # Test małego obrazu
-        test_img = Image.new('RGB', (50, 20), color='white')
-        pytesseract.image_to_string(test_img)
-        status['tesseract_available'] = True
+        result = subprocess.run(['tesseract', '--version'], capture_output=True, text=True)
+        if result.returncode == 0:
+            status['tesseract_available'] = True
     except:
-        status['tesseract_available'] = False
+        pass
     
     return status
 
+def get_database_connection():
+    """Get SQLite database connection."""
+    db_path = Path("data/jarvis_edu.db")
+    if not db_path.exists():
+        return None
+    return sqlite3.connect(str(db_path))
+
+def load_processed_files_from_db():
+    """Load processed files from database."""
+    conn = get_database_connection()
+    if not conn:
+        return []
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, filepath, status, file_metadata, created_at, updated_at, error_message
+            FROM file_entries 
+            WHERE status = 'COMPLETED'
+            ORDER BY updated_at DESC
+            LIMIT 100
+        """)
+        
+        results = []
+        for row in cursor.fetchall():
+            file_id, filepath, status, metadata, created_at, updated_at, error_msg = row
+            
+            # Parse metadata
+            try:
+                file_metadata = json.loads(metadata) if metadata else {}
+            except:
+                file_metadata = {}
+            
+            # Extract content if available
+            extracted_content = file_metadata.get('extracted_content', '')
+            ai_summary = file_metadata.get('ai_summary', '')
+            processing_results = file_metadata.get('processing_results', {})
+            
+            result = {
+                'id': file_id,
+                'file_name': Path(filepath).name,
+                'file_path': filepath,
+                'status': status,
+                'file_type': file_metadata.get('file_type', 'unknown'),
+                'file_size_mb': file_metadata.get('file_size_mb', 0),
+                'processing_time': file_metadata.get('processing_time', 0),
+                'confidence': file_metadata.get('confidence', 0),
+                'extracted_content': extracted_content,
+                'ai_summary': ai_summary,
+                'processing_results': processing_results,
+                'created_at': created_at,
+                'updated_at': updated_at,
+                'error_message': error_msg,
+                'metadata': file_metadata
+            }
+            results.append(result)
+        
+        conn.close()
+        return results
+        
+    except Exception as e:
+        st.error(f"Error loading processed files: {e}")
+        conn.close()
+        return []
+
+def get_database_stats():
+    """Get database statistics."""
+    conn = get_database_connection()
+    if not conn:
+        return None
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Total files
+        cursor.execute("SELECT COUNT(*) FROM file_entries")
+        total = cursor.fetchone()[0]
+        
+        # Status breakdown
+        cursor.execute("SELECT status, COUNT(*) FROM file_entries GROUP BY status")
+        status_counts = dict(cursor.fetchall())
+        
+        # Recent activity (last 24 hours)
+        cursor.execute("""
+            SELECT COUNT(*) FROM file_entries 
+            WHERE updated_at > datetime('now', '-1 day')
+        """)
+        recent_activity = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        return {
+            'total': total,
+            'completed': status_counts.get('COMPLETED', 0),
+            'processing': status_counts.get('PROCESSING', 0), 
+            'pending': status_counts.get('PENDING', 0),
+            'failed': status_counts.get('FAILED', 0),
+            'recent_activity': recent_activity,
+            'success_rate': (status_counts.get('COMPLETED', 0) / total * 100) if total > 0 else 0
+        }
+        
+    except Exception as e:
+        st.error(f"Error getting database stats: {e}")
+        conn.close()
+        return None
+
+def get_file_details(file_id):
+    """Get detailed information about a specific file."""
+    conn = get_database_connection()
+    if not conn:
+        return None
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, filepath, status, file_metadata, created_at, updated_at, error_message, content_type
+            FROM file_entries 
+            WHERE id = ?
+        """, (file_id,))
+        
+        row = cursor.fetchone()
+        if not row:
+            return None
+        
+        file_id, filepath, status, metadata, created_at, updated_at, error_msg, content_type = row
+        
+        # Parse metadata
+        try:
+            file_metadata = json.loads(metadata) if metadata else {}
+        except:
+            file_metadata = {}
+        
+        conn.close()
+        
+        return {
+            'id': file_id,
+            'filepath': filepath,
+            'file_name': Path(filepath).name,
+            'status': status,
+            'content_type': content_type,
+            'created_at': created_at,
+            'updated_at': updated_at,
+            'error_message': error_msg,
+            'metadata': file_metadata,
+            'extracted_content': file_metadata.get('extracted_content', ''),
+            'ai_summary': file_metadata.get('ai_summary', ''),
+            'processing_results': file_metadata.get('processing_results', {}),
+            'file_size_mb': file_metadata.get('file_size_mb', 0),
+            'processing_time': file_metadata.get('processing_time', 0),
+            'confidence': file_metadata.get('confidence', 0)
+        }
+        
+    except Exception as e:
+        st.error(f"Error getting file details: {e}")
+        conn.close()
+        return None
+
 def load_processing_results():
-    """Ładowanie wyników przetwarzania z wszystkich raportów - MEGA ADVANCED SUPPORT"""
+    """Ładowanie wyników przetwarzania z bazy danych i JSON raportów"""
+    # First try to load from database
+    db_results = load_processed_files_from_db()
+    
+    if db_results:
+        return db_results, "DATABASE", True, "SQLite Database", {}, {}
+    
+    # Fallback to JSON reports (existing code)
     results = []
     processing_type = "MOCK"
     jarvis_available = False
@@ -451,14 +612,184 @@ def main():
             st.info("To start the processor, run: python start_jarvis.py")
             st.code("python start_jarvis.py")
     
-    # Processing Results with MEGA ADVANCED detection
-    st.markdown("### 📋 Wyniki Przetwarzania (MEGA Advanced System)")
+    # Database Statistics
+    st.markdown("### 🗄️ Database Statistics")
+    
+    db_stats = get_database_stats()
+    if db_stats:
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            st.metric("📁 Total Files", f"{db_stats['total']:,}")
+        
+        with col2:
+            st.metric("✅ Completed", f"{db_stats['completed']:,}")
+        
+        with col3:
+            st.metric("🔄 Processing", f"{db_stats['processing']:,}")
+        
+        with col4:
+            st.metric("📋 Pending", f"{db_stats['pending']:,}")
+        
+        with col5:
+            st.metric("🎯 Success Rate", f"{db_stats['success_rate']:.1f}%")
+        
+        # Progress bar for completion
+        if db_stats['total'] > 0:
+            progress = db_stats['completed'] / db_stats['total']
+            st.progress(progress)
+            st.caption(f"Progress: {db_stats['completed']}/{db_stats['total']} files completed")
+    else:
+        st.info("Database not available or empty")
+    
+    # Processed Files Browser
+    st.markdown("### 📂 Przeglądarka Przetworzonych Plików")
+    
+    # Load processed files from database
+    processed_files = load_processed_files_from_db()
+    
+    if processed_files:
+        st.success(f"✅ Znaleziono {len(processed_files)} przetworzonych plików w bazie danych")
+        
+        # Search and filter controls
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            search_term = st.text_input("🔍 Szukaj pliku", placeholder="Wprowadź nazwę pliku...")
+        
+        with col2:
+            file_types = list(set([f.get('file_type', 'unknown') for f in processed_files]))
+            selected_type = st.selectbox("📄 Typ pliku", ["Wszystkie"] + file_types)
+        
+        with col3:
+            sort_by = st.selectbox("📊 Sortuj według", ["Najnowsze", "Nazwa", "Rozmiar", "Czas przetwarzania"])
+        
+        # Filter files
+        filtered_files = processed_files
+        
+        if search_term:
+            filtered_files = [f for f in filtered_files if search_term.lower() in f['file_name'].lower()]
+        
+        if selected_type != "Wszystkie":
+            filtered_files = [f for f in filtered_files if f.get('file_type') == selected_type]
+        
+        # Sort files
+        if sort_by == "Nazwa":
+            filtered_files = sorted(filtered_files, key=lambda x: x['file_name'])
+        elif sort_by == "Rozmiar":
+            filtered_files = sorted(filtered_files, key=lambda x: x.get('file_size_mb', 0), reverse=True)
+        elif sort_by == "Czas przetwarzania":
+            filtered_files = sorted(filtered_files, key=lambda x: x.get('processing_time', 0), reverse=True)
+        # Default: Najnowsze (already sorted by updated_at DESC)
+        
+        st.info(f"Pokazuję {len(filtered_files)} z {len(processed_files)} plików")
+        
+        # Files display with expandable details
+        if filtered_files:
+            # Show files in batches for better performance
+            files_per_page = 10
+            page = st.selectbox("📄 Strona", range(1, (len(filtered_files) // files_per_page) + 2))
+            start_idx = (page - 1) * files_per_page
+            end_idx = start_idx + files_per_page
+            
+            current_files = filtered_files[start_idx:end_idx]
+            
+            for i, file_info in enumerate(current_files):
+                with st.expander(f"📄 {file_info['file_name']} ({file_info.get('file_type', 'unknown')})"):
+                    col1, col2 = st.columns([2, 1])
+                    
+                    with col1:
+                        st.write(f"**📁 Ścieżka:** {file_info['file_path']}")
+                        st.write(f"**📊 Rozmiar:** {file_info.get('file_size_mb', 0):.2f} MB")
+                        st.write(f"**⏱️ Czas przetwarzania:** {file_info.get('processing_time', 0):.2f}s")
+                        st.write(f"**🎯 Confidence:** {file_info.get('confidence', 0)}%")
+                        st.write(f"**📅 Zaktualizowano:** {file_info.get('updated_at', 'N/A')}")
+                    
+                    with col2:
+                        st.write(f"**🆔 ID:** {file_info['id']}")
+                        st.write(f"**✅ Status:** {file_info['status']}")
+                        
+                        # Quick actions
+                        if st.button(f"📖 Pokaż szczegóły", key=f"details_{file_info['id']}"):
+                            st.session_state[f"show_details_{file_info['id']}"] = True
+                    
+                    # Show detailed content if requested
+                    if st.session_state.get(f"show_details_{file_info['id']}", False):
+                        st.markdown("---")
+                        
+                        # Extracted content
+                        if file_info.get('extracted_content'):
+                            st.write("**📄 Wyodrębniona treść:**")
+                            content = file_info['extracted_content']
+                            if len(content) > 500:
+                                st.text_area(
+                                    "Treść",
+                                    value=content[:500] + "...",
+                                    height=150,
+                                    key=f"content_short_{file_info['id']}",
+                                    label_visibility="hidden"
+                                )
+                                if st.button(f"Pokaż pełną treść", key=f"full_content_{file_info['id']}"):
+                                    st.text_area(
+                                        "Pełna treść",
+                                        value=content,
+                                        height=300,
+                                        key=f"content_full_{file_info['id']}",
+                                        label_visibility="hidden"
+                                    )
+                            else:
+                                st.text_area(
+                                    "Treść",
+                                    value=content,
+                                    height=150,
+                                    key=f"content_{file_info['id']}",
+                                    label_visibility="hidden"
+                                )
+                        
+                        # AI Summary
+                        if file_info.get('ai_summary'):
+                            st.write("**🤖 Podsumowanie AI:**")
+                            st.text_area(
+                                "Podsumowanie",
+                                value=file_info['ai_summary'],
+                                height=100,
+                                key=f"summary_{file_info['id']}",
+                                label_visibility="hidden"
+                            )
+                        
+                        # Processing results
+                        if file_info.get('processing_results'):
+                            st.write("**⚙️ Wyniki przetwarzania:**")
+                            st.json(file_info['processing_results'])
+                        
+                        # Hide details button
+                        if st.button(f"🔼 Ukryj szczegóły", key=f"hide_{file_info['id']}"):
+                            st.session_state[f"show_details_{file_info['id']}"] = False
+                            st.rerun()
+            
+            # Navigation info
+            total_pages = (len(filtered_files) // files_per_page) + 1
+            st.info(f"Strona {page} z {total_pages} | Pliki {start_idx + 1}-{min(end_idx, len(filtered_files))} z {len(filtered_files)}")
+            
+        else:
+            st.info("Brak plików spełniających kryteria wyszukiwania")
+    
+    else:
+        st.info("Brak przetworzonych plików w bazie danych")
+        st.write("💡 **Wskazówka:** Uruchom ciągły processor aby przetworzyć pliki:")
+        st.code("python start_jarvis.py")
+    
+    # Processing Results with MEGA ADVANCED detection (fallback)
+    st.markdown("### 📋 Wyniki Przetwarzania (Legacy/Fallback)")
     
     results, processing_type, jarvis_available, report_source, category_stats, auto_discovery_stats = load_processing_results()
     
     if results:
         # Advanced processing status indicators
-        if processing_type == "MEGA_ADVANCED":
+        if processing_type == "DATABASE":
+            st.success("🗄️ Dane z bazy danych SQLite!")
+            st.info(f"🔍 Source: {report_source} | Real-time Database")
+        elif processing_type == "MEGA_ADVANCED":
             st.success("🚀 Dane z MEGA ADVANCED PROCESSOR!")
             st.info(f"🔍 Source: {report_source} | Comprehensive Tagging + Auto-Discovery")
         elif processing_type == "ADVANCED":
