@@ -8,6 +8,7 @@ import subprocess
 import json
 import os
 import torch
+from datetime import datetime
 
 from .base_extractor import BaseExtractor, ExtractedContent
 from ..core.logger import get_logger
@@ -327,7 +328,7 @@ class EnhancedVideoExtractor(BaseExtractor):
         return '\n\n'.join(transcripts)
     
     async def _analyze_keyframes(self, file_path: str, metadata: Dict) -> Dict[str, Any]:
-        """Extract and analyze keyframes from video."""
+        """Extract and analyze keyframes from video with progressive processing for long videos."""
         analysis = {
             "frames": [],
             "detected_content": [],
@@ -338,14 +339,26 @@ class EnhancedVideoExtractor(BaseExtractor):
             return analysis
         
         try:
-            # Calculate frame extraction interval
+            # Progresywne przetwarzanie keyframes na podstawie długości
             duration = metadata.get('duration', 60)
-            num_frames = min(10, max(3, int(duration / 30)))  # 1 frame per 30 seconds, max 10
-            interval = duration / num_frames
+            
+            # Dla długich video - mniej keyframes
+            if duration > 7200:  # 2h+
+                max_frames = 10
+                interval = duration / max_frames
+                logger.info(f"Long video mode: extracting {max_frames} keyframes from {duration/3600:.1f}h video")
+            elif duration > 3600:  # 1h+
+                max_frames = 20
+                interval = duration / max_frames
+                logger.info(f"Medium video mode: extracting {max_frames} keyframes from {duration/60:.1f}min video")
+            else:
+                max_frames = 30
+                interval = max(30, duration / max_frames)  # Min 30s between frames
+                logger.info(f"Short video mode: extracting {max_frames} keyframes from {duration/60:.1f}min video")
             
             with tempfile.TemporaryDirectory() as temp_dir:
-                # Extract keyframes
-                for i in range(num_frames):
+                # Extract keyframes with optimized processing
+                for i in range(max_frames):
                     timestamp = i * interval
                     frame_path = Path(temp_dir) / f"frame_{i:03d}.jpg"
                     
@@ -711,7 +724,21 @@ Format as JSON."""
         return cleaned.strip()
 
     async def _extract_audio_transcript(self, file_path: str) -> Dict[str, Any]:
-        """Extract audio and generate transcript with hallucination detection."""
+        """Extract audio with intelligent sampling for long videos"""
+        
+        # Sprawdź długość video
+        metadata = await self._extract_video_metadata(file_path)
+        duration = metadata.get('duration', 0)
+        
+        if duration > 7200:  # Ponad 2 godziny
+            # Próbkuj co 10 minut zamiast całości
+            return await self._extract_sampled_transcript(file_path, duration)
+        else:
+            # Normalna ekstrakcja dla krótszych
+            return await self._extract_full_transcript(file_path)
+
+    async def _extract_full_transcript(self, file_path: str) -> Dict[str, Any]:
+        """Extract full audio transcript with hallucination detection."""
         transcript_data = {
             'transcript': '',
             'language': 'unknown',
@@ -819,4 +846,208 @@ Format as JSON."""
             logger.error(f"Transcript extraction failed: {e}")
             transcript_data['transcript'] = f"Błąd transkrypcji: {str(e)}"
             
-        return transcript_data 
+        return transcript_data
+    
+    async def _extract_sampled_transcript(self, file_path: str, duration: float) -> Dict[str, Any]:
+        """Próbkuj długie video co N minut"""
+        logger.info(f"Rozpoczynam próbkowaną transkrypcję dla {duration/3600:.1f}h video")
+        
+        samples = []
+        sample_duration = 120  # 2 minuty próbki
+        sample_interval = 600  # Co 10 minut
+        
+        # Check for existing checkpoint
+        checkpoint_data = await self._load_checkpoint(file_path)
+        start_time = 0
+        if checkpoint_data:
+            start_time = checkpoint_data.get('last_processed_time', 0)
+            samples = checkpoint_data.get('samples', [])
+            logger.info(f"Resuming from checkpoint at {start_time/60:.1f} minutes")
+        
+        for current_time in range(start_time, int(duration), sample_interval):
+            try:
+                # Save checkpoint before processing
+                await self._save_checkpoint(file_path, {
+                    'last_processed_time': current_time,
+                    'samples': samples,
+                    'total_duration': duration
+                })
+                
+                # Ekstraktuj fragment
+                sample = await self._extract_video_segment(
+                    file_path, current_time, sample_duration
+                )
+                
+                if sample['transcript']:
+                    samples.append({
+                        'timestamp': current_time,
+                        'time_formatted': f"{current_time//3600:02d}:{(current_time%3600)//60:02d}:{current_time%60:02d}",
+                        'text': sample['transcript'],
+                        'confidence': sample.get('confidence', 0.5)
+                    })
+                    logger.info(f"Processed sample at {current_time//60:.1f}min: {len(sample['transcript'])} chars")
+                
+                # Clear GPU memory periodically
+                if torch.cuda.is_available() and len(samples) % 5 == 0:
+                    torch.cuda.empty_cache()
+                    
+            except Exception as e:
+                logger.error(f"Failed to process sample at {current_time}: {e}")
+                continue
+        
+        # Połącz próbki w spójną transkrypcję
+        full_transcript = self._merge_samples(samples)
+        
+        # Clear checkpoint on completion
+        await self._clear_checkpoint(file_path)
+        
+        return {
+            'transcript': full_transcript,
+            'method': 'sampled',
+            'samples_count': len(samples),
+            'total_duration': duration,
+            'coverage_percent': (len(samples) * sample_duration / duration) * 100,
+            'processing_method': 'whisper_sampled'
+        }
+    
+    async def _extract_video_segment(self, file_path: str, start_time: int, duration: int) -> Dict[str, Any]:
+        """Ekstraktuj i transkrybuj fragment video"""
+        import tempfile
+        
+        segment_data = {
+            'transcript': '',
+            'confidence': 0.0,
+            'duration': duration
+        }
+        
+        temp_audio = None
+        try:
+            # Create temporary file for segment
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+                temp_audio = tmp.name
+            
+            # Extract audio segment
+            ffmpeg_cmd = [
+                self._ffmpeg_path, '-y',
+                '-ss', str(start_time),
+                '-i', file_path,
+                '-t', str(duration),
+                '-vn',
+                '-acodec', 'pcm_s16le',
+                '-ar', '16000',
+                '-ac', '1',
+                '-af', 'volume=2.0,highpass=f=80,lowpass=f=8000',
+                temp_audio
+            ]
+            
+            result = subprocess.run(
+                ffmpeg_cmd,
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            if result.returncode == 0 and os.path.exists(temp_audio) and os.path.getsize(temp_audio) > 1000:
+                # Transcribe segment
+                transcription = self._whisper_model.transcribe(
+                    temp_audio,
+                    language='pl',
+                    task='transcribe',
+                    verbose=False,
+                    temperature=0.0,
+                    condition_on_previous_text=False
+                )
+                
+                raw_transcript = transcription.get('text', '').strip()
+                cleaned_transcript = self._clean_whisper_transcript(raw_transcript)
+                
+                if cleaned_transcript:
+                    segment_data.update({
+                        'transcript': cleaned_transcript,
+                        'confidence': 0.8
+                    })
+            
+        except Exception as e:
+            logger.error(f"Segment extraction failed: {e}")
+        finally:
+            if temp_audio and os.path.exists(temp_audio):
+                try:
+                    os.unlink(temp_audio)
+                except:
+                    pass
+        
+        return segment_data
+    
+    def _merge_samples(self, samples: List[Dict]) -> str:
+        """Połącz próbki w spójną transkrypcję"""
+        if not samples:
+            return ""
+        
+        merged_parts = []
+        for sample in samples:
+            timestamp = sample['time_formatted']
+            text = sample['text']
+            merged_parts.append(f"[{timestamp}] {text}")
+        
+        return '\n\n'.join(merged_parts)
+    
+    def _get_checkpoint_file(self, file_path: str) -> Path:
+        """Get checkpoint file for resume capability"""
+        import hashlib
+        file_hash = hashlib.md5(str(file_path).encode()).hexdigest()
+        checkpoint_dir = Path("temp/checkpoints")
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        return checkpoint_dir / f"{file_hash}.json"
+
+    async def _save_checkpoint(self, file_path: str, state: Dict):
+        """Save processing checkpoint"""
+        try:
+            checkpoint_file = self._get_checkpoint_file(file_path)
+            
+            checkpoint_data = {
+                'file_path': str(file_path),
+                'state': state,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            with open(checkpoint_file, 'w', encoding='utf-8') as f:
+                json.dump(checkpoint_data, f, indent=2, ensure_ascii=False)
+                
+            logger.debug(f"Checkpoint saved: {checkpoint_file}")
+        except Exception as e:
+            logger.error(f"Failed to save checkpoint: {e}")
+
+    async def _load_checkpoint(self, file_path: str) -> Optional[Dict]:
+        """Load processing checkpoint"""
+        try:
+            checkpoint_file = self._get_checkpoint_file(file_path)
+            
+            if not checkpoint_file.exists():
+                return None
+                
+            with open(checkpoint_file, 'r', encoding='utf-8') as f:
+                checkpoint_data = json.load(f)
+                
+            # Check if checkpoint is not too old (max 24 hours)
+            from datetime import timedelta
+            checkpoint_time = datetime.fromisoformat(checkpoint_data['timestamp'])
+            if datetime.now() - checkpoint_time > timedelta(hours=24):
+                await self._clear_checkpoint(file_path)
+                return None
+                
+            logger.info(f"Loaded checkpoint from {checkpoint_time}")
+            return checkpoint_data.get('state')
+            
+        except Exception as e:
+            logger.error(f"Failed to load checkpoint: {e}")
+            return None
+
+    async def _clear_checkpoint(self, file_path: str):
+        """Clear processing checkpoint"""
+        try:
+            checkpoint_file = self._get_checkpoint_file(file_path)
+            if checkpoint_file.exists():
+                checkpoint_file.unlink()
+                logger.debug("Checkpoint cleared")
+        except Exception as e:
+            logger.error(f"Failed to clear checkpoint: {e}") 
